@@ -3,6 +3,8 @@ from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
 from starlette.requests import Request
 
+from db.models import User, SessionLocal
+
 from dotenv import load_dotenv
 import os
 
@@ -40,7 +42,7 @@ oauth.register(
 @router.get("/login/oidc")
 async def login(request: Request):
     auth0_client = oauth.create_client("auth0")
-    redirect_uri = os.getenv("OIDC_REDIRECT_URI")
+    redirect_uri = os.getenv("OIDC_REDIRECT_URL")
     return await auth0_client.authorize_redirect(request, redirect_uri)
 
 @router.route("/authorize")
@@ -54,6 +56,22 @@ async def authorize(request: Request):
 
     # save user info in session
     request.session["user"] = profile
+
+    # check if user is already in the database
+    db = SessionLocal()
+    user_db = db.query(User).filter(User.username == profile["preferred_username"]).first()
+    if not user_db:
+        print("Create User in DB")
+        user_db = User(
+            username=profile["preferred_username"],
+            role="user"  # Default role
+        )
+        db.add(user_db)
+        db.commit()
+        db.refresh(user_db)
+    db.close()
+
+    print("User in DB:", user_db)
 
     return RedirectResponse(url="/", status_code=303)
 

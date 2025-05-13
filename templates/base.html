@@ -9,11 +9,32 @@
     <header>
         <h1>Meine Beispielseite</h1>
         {% if user %}
-            <p>Angemeldet als {{ user.preferred_username }} ({{ user.groups }}) – <a href="/logout">Logout</a></p>
+            <p>Angemeldet als {{ user.preferred_username }}{% if 'Fachschaft Admins' in user.groups %} (Admin){% endif %} – <a href="/logout">Logout</a></p>
         {% endif %}
     </header>
     <main>
         {% block content %}{% endblock %}
+        {% if user %}
+            {% if 'Fachschaft' in user.groups %}
+                <p>Du bist Teil der Fachschaft Informatik.</p>
+            {% endif %}
+            {% if 'Fachschaft Admins' in user.groups %}
+                <h2>Admin Interface</h2>
+                <p>Users in database:</p>
+                    <ul>
+                        {% for db_user in users %}
+                            <li>{{ db_user.username }} ({{ db_user.role }}) - {{ db_user.money / 100 }}</li>
+                        {% endfor %}
+                    </ul>
+                
+                <p>Set user money:</p>
+                <form method="post" action="/set_money">
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="number" name="money" placeholder="Money" step="0.01" required>
+                    <button type="submit">Set Money</button>
+                </form>
+            {% endif %}
+        {% endif %}
     </main>
 </body>
 </html>

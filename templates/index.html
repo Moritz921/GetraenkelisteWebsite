@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Startseite{% endblock %}
 {% block content %}
-<h2>Willkommen, {{ user.username }}!</h2>
+<h2>Willkommen, {{ user.name }}!</h2>
 <p>Dies ist eine einfache geschützte Seite.</p>
+<h3>Aktueller Stand:</h3>
+<p>Du hast {{ db_user.money / 100 }} Euro.</p>
+{% if 'Fachschaft' in user.groups %}
+    <h3>Getränk abziehen</h3>
+    <form method="post" action="/drink">
+        <button type="submit">Abziehen</button>
+    </form>
+{% endif %}
 {% endblock %}
