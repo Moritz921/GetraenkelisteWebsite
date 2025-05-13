@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<h2>Login</h2>
+
+<!-- SSO-Button -->
+<form method="get" action="/login/oidc">
+    <button type="submit">🔐 Login with Authentik</button>
+</form>
+
+<!-- WebAuthn-Button -->
+ <!-- <form method="get" action="/login/webauthn">
+    <button type="submit">🧷 Mit WebAuthn anmelden</button>
+</form> -->
+
+
+{% endblock %}

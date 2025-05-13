@@ -1,0 +1,11 @@
+body {
+    font-family: sans-serif;
+    max-width: 800px;
+    margin: auto;
+    padding: 1em;
+}
+header {
+    background-color: #eee;
+    padding: 1em;
+    margin-bottom: 1em;
+}
