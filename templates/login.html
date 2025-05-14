@@ -4,9 +4,13 @@
 <h2>Login</h2>
 
 <!-- SSO-Button -->
-<form method="get" action="/login/oidc">
-    <button type="submit">🔐 Login with Authentik</button>
-</form>
+<div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+    <form method="get" action="/login/oidc">
+        <button type="submit" style="padding: 12px 28px; background-color: #1976d2; color: #fff; border: none; border-radius: 6px; font-size: 1.1em; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.08); transition: background 0.2s;">
+            🔐 Login with Authentik
+        </button>
+    </form>
+</div>
 
 <!-- WebAuthn-Button -->
  <!-- <form method="get" action="/login/webauthn">

@@ -9,3 +9,38 @@ header {
     padding: 1em;
     margin-bottom: 1em;
 }
+
+:root {
+    --goetheblau: rgb(0, 97, 143);
+    --purple: rgb(134, 0, 71);
+    --emorot: rgb(179, 6, 44);
+    --hellgrau: rgb(248, 246, 245);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --goetheblau: rgb(139, 207, 238);
+        --purple: rgb(228, 96, 164);
+        --emorot: rgb(179, 6, 44);
+        --hellgrau: rgb(77, 75, 70); /* eig. Dunkelgrau */
+    }
+    body {
+        background: #181a1b;
+        color: #e0e0e0;
+    }
+    header {
+        background-color: #23272a;
+    }
+    main {
+        background: #23272a;
+    }
+    table {
+        background: #23272a;
+        color: #e0e0e0;
+    }
+    input, select, button {
+        background: #23272a;
+        color: #e0e0e0;
+        border-color: #444;
+    }
+}

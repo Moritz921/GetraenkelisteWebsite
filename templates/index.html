@@ -3,12 +3,37 @@
 {% block content %}
 <h2>Willkommen, {{ user.name }}!</h2>
 <p>Dies ist eine einfache geschützte Seite.</p>
-<h3>Aktueller Stand:</h3>
-<p>Du hast {{ db_user.money / 100 }} Euro.</p>
+<p><strong>Aktueller Kontostand:</strong></p>
+{% if db_user.money > -5000 %}
+    <div style="text-align: center; font-size: 2em; color: var(--goetheblau); margin: 0.5em 0;">
+        {{ db_user.money / 100 }} Euro
+    </div>
+{% else %}
+    <div style="text-align: center; font-size: 2em; color: var(--purple); margin: 0.5em 0; font-weight: bold;">
+        {{ db_user.money / 100 }} Euro
+        <br>
+        <span style="color: var(--goetheblau); font-weight: normal; font-size: 1em;">
+            Bitte begleiche deinen offenen Betrag!
+        </span>
+    </div>
+{% endif %}
 {% if 'Fachschaft' in user.groups %}
-    <h3>Getränk abziehen</h3>
-    <form method="post" action="/drink">
-        <button type="submit">Abziehen</button>
-    </form>
+    {% if db_user.money > -5000 %}
+    <div style="display: flex; justify-content: center;text-align: center;"></div>
+        <form method="post" action="/drink">
+            <button type="submit" style="background-color: rgb(165, 171, 82); color: rgb(255, 255, 255); font-size: 1.5em; padding: 0.75em 2em; border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(40,167,69,0.15); cursor: pointer; transition: background 0.2s;">
+            Getränk abziehen
+            </button>
+        </form>
+    </div>
+    {% else %}
+        <div style="display: flex; justify-content: center;text-align: center;"></div>
+        <form method="post" action="/drink">
+            <button type="submit" style="background-color: var(--emorot); color: rgb(255, 255, 255); font-size: 1.5em; padding: 0.75em 2em; border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(40,167,69,0.15); cursor: pointer; transition: background 0.2s;">
+            Getränk abziehen
+            </button>
+        </form>
+    </div>
+    {% endif %}
 {% endif %}
 {% endblock %}

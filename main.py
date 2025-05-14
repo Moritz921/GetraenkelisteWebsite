@@ -14,6 +14,8 @@ import uvicorn
 from sqlalchemy.orm import Session
 
 
+ADMIN_GROUP = "Fachschaft Admins"
+
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="my_secret_key")
 app.include_router(oidc.router)
@@ -32,7 +34,7 @@ def home(request: Request, user: User = Depends(get_current_user), db: Session =
     if not db_user:
         raise HTTPException(status_code=404, detail="User nicht gefunden")
     users = None
-    if "Fachschaft Admins" in user["groups"]:
+    if ADMIN_GROUP in user["groups"]:
         users = db.query(User).all()
     return templates.TemplateResponse("index.html", {"request": request, "user": user, "users": users, "db_user": db_user})
 
@@ -42,7 +44,7 @@ def login_form(request: Request):
 
 @app.post("/set_money")
 def set_money(request: Request, username: str = Form(...), money: float = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not user or "Fachschaft Admins" not in user["groups"]:
+    if not user or ADMIN_GROUP not in user["groups"]:
         raise HTTPException(status_code=403, detail="Nicht erlaubt")
     db_user = db.query(User).filter_by(username=username).first()
     if not db_user:
@@ -53,12 +55,27 @@ def set_money(request: Request, username: str = Form(...), money: float = Form(.
 
 @app.post("/drink")
 def drink(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not user or "Fachschaft" not in user["groups"]:
+    if not user or ADMIN_GROUP not in user["groups"]:
         raise HTTPException(status_code=403, detail="Nicht erlaubt")
     db_user = db.query(User).filter_by(username=user["preferred_username"]).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User nicht gefunden")
     db_user.money -= 100
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/payup")
+def payup(request: Request, username: str = Form(...), money: float = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not user or ADMIN_GROUP not in user["groups"]:
+        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+    db_user = db.query(User).filter_by(username=username).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User nicht gefunden")
+    db_user.money += money*100
+    current_user = db.query(User).filter_by(username=user["preferred_username"]).first()
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Aktueller User nicht gefunden")
+    current_user.money -= money*100
     db.commit()
     return RedirectResponse(url="/", status_code=303)
 
