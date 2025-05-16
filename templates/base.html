@@ -15,8 +15,7 @@
             <h1>Getränkeliste</h1>
             {% if user %}
             <p>
-                Angemeldet als {{ user.preferred_username }}{% if 'Fachschaft
-                Admins' in user.groups %} (Admin){% endif %} –
+                Angemeldet als {{ user.preferred_username }}{% if 'Fachschaft Admins' in user.groups %} (Admin){% endif %} –
                 <a href="/logout">Logout</a>
             </p>
             {% endif %}
@@ -105,18 +104,20 @@
             <table>
                 <thead>
                     <tr>
+                        <th style="padding: 0.5em 1em">ID</th>
                         <th style="padding: 0.5em 1em">Username</th>
-                        <th style="padding: 0.5em 1em">Role</th>
                         <th style="padding: 0.5em 1em">Money (€)</th>
+                        <th style="padding: 0.5em 1em">Activated</th>
+                        <th style="padding: 0.5em 1em">last drink</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for db_user in users %}
+                    {% for db_user_i in users %}
                     <tr
                         {%
                         if
-                        db_user.money
-                        <="-5000"
+                        db_user_i.money
+                        <=-5000
                         %}
                         style="background-color: rgba(179, 6, 44, 0.5)"
                         {%
@@ -124,11 +125,19 @@
                         %}
                     >
                         <td style="padding: 0.5em 1em">
-                            {{ db_user.username }}
+                            {{ db_user_i.id }}
                         </td>
-                        <td style="padding: 0.5em 1em">{{ db_user.role }}</td>
                         <td style="padding: 0.5em 1em">
-                            {{ db_user.money / 100 }}
+                            {{ db_user_i.username }}
+                        </td>
+                        <td style="padding: 0.5em 1em">
+                            {{ db_user_i.money / 100 }}
+                        </td>
+                        <td style="padding: 0.5em 1em">
+                            {{ db_user_i.activated }}
+                        </td>
+                        <td style="padding: 0.5em 1em">
+                            {{ db_user_i.last_drink }}
                         </td>
                     </tr>
                     {% endfor %}
@@ -137,7 +146,7 @@
             <p>Set user money:</p>
             <form
                 method="post"
-                action="/set_money"
+                action="/set_money_postpaid"
                 style="
                     display: flex;
                     gap: 1em;
