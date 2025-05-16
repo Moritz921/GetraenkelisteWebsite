@@ -1,72 +1,210 @@
 <!DOCTYPE html>
 <html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <title>{% block title %}Getränkeliste{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <header>
-        <img src="/Users/moritz/Documents/Uni/Fachschaft/GetraenkelisteWebsite/fachschaftslogo.png" alt="Logo" style="height: 50px; vertical-align: middle;">
-        <h1>Getränkeliste</h1>
-        {% if user %}
-            <p>Angemeldet als {{ user.preferred_username }}{% if 'Fachschaft Admins' in user.groups %} (Admin){% endif %} – <a href="/logout">Logout</a></p>
-        {% endif %}
-    </header>
-    <main>
-        {% block content %}{% endblock %}
-        {% if user %}
-            {% if 'Fachschaft' in user.groups %}
-                <p>Du bist Teil der Fachschaft Informatik.</p>
+    <head>
+        <meta charset="UTF-8" />
+        <title>{% block title %}Getränkeliste{% endblock %}</title>
+        <link rel="stylesheet" href="/static/style.css" />
+    </head>
+    <body>
+        <header>
+            <img
+                src="/Users/moritz/Documents/Uni/Fachschaft/GetraenkelisteWebsite/fachschaftslogo.png"
+                alt="Logo"
+                style="height: 50px; vertical-align: middle"
+            />
+            <h1>Getränkeliste</h1>
+            {% if user %}
+            <p>
+                Angemeldet als {{ user.preferred_username }}{% if 'Fachschaft
+                Admins' in user.groups %} (Admin){% endif %} –
+                <a href="/logout">Logout</a>
+            </p>
             {% endif %}
-            {% if 'Fachschaft Admins' in user.groups %}
-                <h2>Admin Interface</h2>
-                <p>Ausgleichszahlung:</p>
-                <p>Der eingegebene Betrag wird vom aktuell eingeloggten Nutzer abgezogen und dem eingetragenem Nutzer gutgeschrieben.</p>
-        <form method="post" action="/payup" style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em; background: var(--hellgrau); padding: 1em; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); max-width: 600px;">
-            <label for="payup-username" style="margin: 0 0.5em 0 0; font-weight: bold;">Username:</label>
-            <select id="payup-username" name="username" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
-                {% for db_user in users %}
-                    <option value="{{ db_user.username }}">{{ db_user.username }}</option>
-                {% endfor %}
-            </select>
-            <label for="payup-money" style="margin: 0 0.5em 0 0; font-weight: bold;">Amount (€):</label>
-            <input id="payup-money" type="number" name="money" placeholder="Money" step="0.01" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100px;">
-            <button type="submit" style="padding: 0.5em 1em; background: rgb(0, 97, 143); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Pay Up</button>
-        </form>
-        <p>Users in database:</p>
-        <table>
-            <thead>
-                <tr>
-                    <th style="padding: 0.5em 1em;">Username</th>
-                    <th style="padding: 0.5em 1em;">Role</th>
-                    <th style="padding: 0.5em 1em;">Money (€)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for db_user in users %}
-                    <tr{% if db_user.money <= -5000 %} style="background-color: rgba(179, 6, 44, 0.5);"{% endif %}>
-                        <td style="padding: 0.5em 1em;">{{ db_user.username }}</td>
-                        <td style="padding: 0.5em 1em;">{{ db_user.role }}</td>
-                        <td style="padding: 0.5em 1em;">{{ db_user.money / 100 }}</td>
+        </header>
+        <main>
+            {% block content %}{% endblock %} {% if user %} {% if 'Fachschaft'
+            in user.groups %}
+            <p>Du bist Teil der Fachschaft Informatik.</p>
+            {% endif %} {% if 'Fachschaft Admins' in user.groups %}
+            <h2>Admin Interface</h2>
+            <p>Ausgleichszahlung:</p>
+            <p>
+                Der eingegebene Betrag wird vom aktuell eingeloggten Nutzer
+                abgezogen und dem eingetragenem Nutzer gutgeschrieben.
+            </p>
+            <form
+                method="post"
+                action="/payup"
+                style="
+                    display: flex;
+                    gap: 1em;
+                    align-items: center;
+                    margin-bottom: 1em;
+                    background: var(--hellgrau);
+                    padding: 1em;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+                    max-width: 600px;
+                "
+            >
+                <label
+                    for="payup-username"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Username:</label
+                >
+                <select
+                    id="payup-username"
+                    name="username"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    "
+                >
+                    {% for db_user in users %}
+                    <option value="{{ db_user.username }}">
+                        {{ db_user.username }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <label
+                    for="payup-money"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Amount (€):</label
+                >
+                <input
+                    id="payup-money"
+                    type="number"
+                    name="money"
+                    placeholder="Money"
+                    step="0.01"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        width: 100px;
+                    "
+                />
+                <button
+                    type="submit"
+                    style="
+                        padding: 0.5em 1em;
+                        background: rgb(0, 97, 143);
+                        color: #fff;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    "
+                >
+                    Pay Up
+                </button>
+            </form>
+            <p>Users in database:</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="padding: 0.5em 1em">Username</th>
+                        <th style="padding: 0.5em 1em">Role</th>
+                        <th style="padding: 0.5em 1em">Money (€)</th>
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <p>Set user money:</p>
-        <form method="post" action="/set_money" style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em; background: var(--hellgrau); padding: 1em; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); max-width: 600px;">
-            <label for="setmoney-username" style="margin: 0 0.5em 0 0; font-weight: bold;">Username:</label>
-            <select id="setmoney-username" name="username" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
-                {% for db_user in users %}
-                    <option value="{{ db_user.username }}">{{ db_user.username }}</option>
-                {% endfor %}
-            </select>
-            <label for="setmoney-money" style="margin: 0 0.5em 0 0; font-weight: bold;">Amount (€):</label>
-            <input id="setmoney-money" type="number" name="money" placeholder="Money" step="0.01" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100px;">
-            <button type="submit" style="padding: 0.5em 1em; background: rgb(0, 97, 143); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Set Money</button>
-        </form>
-        {% endif %}
-        {% endif %}
-    </main>
-</body>
+                </thead>
+                <tbody>
+                    {% for db_user in users %}
+                    <tr
+                        {%
+                        if
+                        db_user.money
+                        <="-5000"
+                        %}
+                        style="background-color: rgba(179, 6, 44, 0.5)"
+                        {%
+                        endif
+                        %}
+                    >
+                        <td style="padding: 0.5em 1em">
+                            {{ db_user.username }}
+                        </td>
+                        <td style="padding: 0.5em 1em">{{ db_user.role }}</td>
+                        <td style="padding: 0.5em 1em">
+                            {{ db_user.money / 100 }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p>Set user money:</p>
+            <form
+                method="post"
+                action="/set_money"
+                style="
+                    display: flex;
+                    gap: 1em;
+                    align-items: center;
+                    margin-bottom: 1em;
+                    background: var(--hellgrau);
+                    padding: 1em;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+                    max-width: 600px;
+                "
+            >
+                <label
+                    for="setmoney-username"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Username:</label
+                >
+                <select
+                    id="setmoney-username"
+                    name="username"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    "
+                >
+                    {% for db_user in users %}
+                    <option value="{{ db_user.username }}">
+                        {{ db_user.username }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <label
+                    for="setmoney-money"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Amount (€):</label
+                >
+                <input
+                    id="setmoney-money"
+                    type="number"
+                    name="money"
+                    placeholder="Money"
+                    step="0.01"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        width: 100px;
+                    "
+                />
+                <button
+                    type="submit"
+                    style="
+                        padding: 0.5em 1em;
+                        background: rgb(0, 97, 143);
+                        color: #fff;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    "
+                >
+                    Set Money
+                </button>
+            </form>
+            {% endif %} {% endif %}
+        </main>
+    </body>
 </html>
