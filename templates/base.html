@@ -91,6 +91,76 @@
                     Add User
                 </button>
             </form>
+            <p>Füge bestehendem Prepaid-User Geld hinzu:</p>
+            <form
+                method="post"
+                action="/add_money_prepaid_user"
+                style="
+                    display: flex;
+                    gap: 1em;
+                    align-items: center;
+                    margin-bottom: 1em;
+                    background: var(--hellgrau);
+                    padding: 1em;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+                    max-width: 600px;
+                "
+            >
+                <label
+                    for="addmoney-username"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Username:</label
+                >
+                <select
+                    id="addmoney-username"
+                    name="username"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    "
+                >
+                    {% for db_user in db_users_prepaid %}
+                    <option value="{{ db_user.username }}">
+                        {{ db_user.username }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <label
+                    for="addmoney-money"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Amount (€):</label
+                >
+                <input
+                    id="addmoney-money"
+                    type="number"
+                    name="money"
+                    placeholder="Money"
+                    step="0.01"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        width: 100px;
+                    "
+                />
+                <button
+                    type="submit"
+                    style="
+                        padding: 0.5em 1em;
+                        background: rgb(0, 97, 143);
+                        color: #fff;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    "
+                >
+                    Add Money
+                </button>
+            </form>
             {% endif %}
             {% if 'Fachschaft Admins' in user.groups %}
             <h2>Admin Interface</h2>
@@ -393,6 +463,57 @@
                     {% endif %}
                 </tbody>
             </table>
+            <p>(De-)Activate User</p>
+            <form
+                method="post"
+                action="/toggle_activated_user_prepaid"
+                style="
+                    display: flex;
+                    gap: 1em;
+                    align-items: center;
+                    margin-bottom: 1em;
+                    background: var(--hellgrau);
+                    padding: 1em;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+                    max-width: 600px;
+                "
+            >
+                <label
+                    for="activate-username"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Username:</label
+                >
+                <select
+                    id="activate-username"
+                    name="username"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    "
+                >
+                    {% for db_user in db_users_prepaid %}
+                    <option value="{{ db_user.username }}">
+                        {{ db_user.username }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button
+                    type="submit"
+                    style="
+                        padding: 0.5em 1em;
+                        background: rgb(0, 97, 143);
+                        color: #fff;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    "
+                >
+                    Toggle Activation
+                </button>
+            </form>
             {% endif %} {% endif %}
         </main>
     </body>

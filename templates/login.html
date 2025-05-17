@@ -1,7 +1,6 @@
 {% extends "base.html" %} {% block title %}Login{% endblock %} {% block content
 %}
-<h2>Login</h2>
-
+<h2>Postpaid-Liste:</h2>
 <!-- SSO-Button -->
 <div
     style="
@@ -27,6 +26,52 @@
             "
         >
             🔐 Login with Authentik
+        </button>
+    </form>
+</div>
+<h2>Prepaid-Liste:</h2>
+<div
+    style="
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+    "
+>
+    <form method="post" action="/login/prepaid">
+        <label
+            for="prepaid_user_key"
+            style="margin: 0 0.5em 0 0; font-weight: bold"
+            >Prepaid Key:</label>
+            <input
+                id="prepaid-user-key"
+                type="text"
+                name="prepaid_user_key"
+                placeholder="Prepaid Key"
+                style="
+                    padding: 12px;
+                    border: 1px solid #ccc;
+                    border-radius: 6px;
+                    font-size: 1em;
+                    width: 300px;
+                    margin-bottom: 1em;
+                    "
+        />
+        <button
+            type="submit"
+            style="
+                padding: 12px 28px;
+                background-color: #1976d2;
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                font-size: 1.1em;
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+                transition: background 0.2s;
+            "
+        >
+            📜 Prepaid-Liste
         </button>
     </form>
 </div>

@@ -24,6 +24,8 @@ DATABASE_URL = "sqlite:///./test.db"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
+DRINK_COST = 100  # cent
+
 with engine.connect() as conn:
     # Create a new table for postpaid users
     conn.execute(text("""
@@ -180,7 +182,7 @@ def drink_postpaid_user(user_id: int):
     prev_money = get_postpaid_user(user_id)["money"]
     t = text("UPDATE users_postpaid SET money = :money, last_drink = CURRENT_TIMESTAMP WHERE id = :id")
     with engine.connect() as connection:
-        result = connection.execute(t, {"id": user_id, "money": prev_money - 100})
+        result = connection.execute(t, {"id": user_id, "money": prev_money - DRINK_COST})
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="User not found")
         connection.commit()
@@ -271,3 +273,49 @@ def create_prepaid_user(prepaid_username: str, postpaid_user_id: int, start_mone
         connection.commit()
 
     return result.lastrowid
+
+def drink_prepaid_user(user_db_id: int):
+    user_dict = get_prepaid_user(user_db_id)
+    if not user_dict["activated"]:
+        raise HTTPException(status_code=403, detail="User not activated")
+
+    prev_money = user_dict["money"]
+    if prev_money < DRINK_COST:
+        raise HTTPException(status_code=403, detail="Not enough money")
+    t = text("UPDATE users_prepaid SET money = :money, last_drink = CURRENT_TIMESTAMP WHERE id = :id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"id": user_db_id, "money": prev_money - DRINK_COST})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        connection.commit()
+
+    with engine.connect() as connection:
+        t = text("INSERT INTO drinks (prepaid_user_id, timestamp) VALUES (:prepaid_user_id, CURRENT_TIMESTAMP)")
+        result = connection.execute(t, {"prepaid_user_id": user_db_id})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=500, detail="Failed to create drink entry")
+        connection.commit()
+    return result.rowcount
+
+def toggle_activate_prepaid_user(user_id: int):
+    prev_activated = get_prepaid_user(user_id)["activated"]
+    t = text("UPDATE users_prepaid SET activated = :activated WHERE id = :id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"id": user_id, "activated": not prev_activated})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        connection.commit()
+    return result.rowcount
+
+def set_prepaid_user_money(user_id: int, money: int, postpaid_user_id: int):
+    t1 = text("UPDATE users_prepaid SET money = :money WHERE id = :id")
+    t2 = text("UPDATE users_prepaid SET postpaid_user_id = :postpaid_user_id WHERE id = :id")
+    with engine.connect() as connection:
+        result = connection.execute(t1, {"id": user_id, "money": money})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        result = connection.execute(t2, {"id": user_id, "postpaid_user_id": postpaid_user_id})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        connection.commit()
+    return result.rowcount

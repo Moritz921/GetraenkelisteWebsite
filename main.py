@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -16,8 +16,9 @@ from db.models import toggle_activate_postpaid_user
 from db.models import get_prepaid_user
 from db.models import get_prepaid_user_by_username
 from db.models import create_prepaid_user
-
-from auth.session import get_current_user
+from db.models import drink_prepaid_user
+from db.models import toggle_activate_prepaid_user
+from db.models import set_prepaid_user_money
 
 from auth import oidc
 
@@ -44,6 +45,8 @@ def home(request: Request):
     user_authentik = request.session.get("user_authentik")
     if not user_db_id or not user_authentik:
         raise HTTPException(status_code=404, detail="User nicht gefunden")
+    print(f"Current user: {user_authentik}")
+    print(f"Current user db id: {user_db_id}")
     users = None
     db_users_prepaid = None
     if ADMIN_GROUP in user_authentik["groups"]:
@@ -58,15 +61,22 @@ def home(request: Request):
                         users.append(user_db)
             t = text("SELECT id FROM users_prepaid")
             result = conn.execute(t).fetchall()
-            print(f"Result: {result}")
             if result:
                 db_users_prepaid = []
                 for row in result:
                     prepaid_user = get_prepaid_user(row[0])
                     if prepaid_user:
                         db_users_prepaid.append(prepaid_user)
-    db_user = get_postpaid_user(user_db_id)
-    print("db_users_prepaid", db_users_prepaid)
+    try:
+        if user_authentik["prepaid"]:
+            print("Prepaid user")
+            db_user = get_prepaid_user(user_db_id)
+        else:
+            print("Postpaid user")
+            db_user = get_postpaid_user(user_db_id)
+    except KeyError:
+        print("Postpaid user")
+        db_user = get_postpaid_user(user_db_id)
     return templates.TemplateResponse("index.html", {
         "request": request,
         "user": user_authentik,
@@ -211,6 +221,54 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
 
     return RedirectResponse(url="/", status_code=303)
 
+@app.post("/drink_prepaid")
+def drink_prepaid(request: Request):
+    user_db_id = request.session.get("user_db_id")
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User nicht gefunden")
+    user_authentik = request.session.get("user_authentik")
+    if not user_authentik:
+        raise HTTPException(status_code=404, detail="User nicht gefunden")
+    if not user_authentik["prepaid"]:
+        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+
+    drink_prepaid_user(user_db_id)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/toggle_activated_user_prepaid")
+def toggle_activated_user_prepaid(request: Request, username: str = Form(...)):
+    user_auth = request.session.get("user_authentik")
+    if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
+        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+
+    user_db_id = get_prepaid_user_by_username(username)["id"]
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User nicht gefunden")
+
+    toggle_activate_prepaid_user(user_db_id)
+
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/add_money_prepaid_user")
+def add_money_prepaid_user(request: Request, username: str = Form(...), money: float = Form(...)):
+    curr_user_auth = request.session.get("user_authentik")
+    if not curr_user_auth or ADMIN_GROUP not in curr_user_auth["groups"]:
+        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+    curr_user_db_id = request.session.get("user_db_id")
+    if not curr_user_db_id:
+        raise HTTPException(status_code=404, detail="Logged In User not found")
+
+    prepaid_user_dict = get_prepaid_user_by_username(username)
+    prepaid_user_db_id = prepaid_user_dict["id"]
+    if not prepaid_user_db_id:
+        raise HTTPException(status_code=404, detail="Prepaid User not found")
+    curr_user_money = get_postpaid_user(curr_user_db_id)["money"]
+    prepaid_user_money = prepaid_user_dict["money"]
+
+    set_postpaid_user_money(curr_user_db_id, curr_user_money - money*100)
+    set_prepaid_user_money(prepaid_user_db_id, prepaid_user_money + money*100, curr_user_db_id)
+
+    return RedirectResponse(url="/", status_code=303)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -27,7 +27,7 @@ Functions:
     logout(request): Logs the user out and redirects to the identity provider's logout endpoint.
 """
 import os
-from fastapi import APIRouter
+from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
 from starlette.requests import Request
@@ -126,8 +126,23 @@ async def logout(request: Request):
     """
 
     request.session.pop(SESSION_KEY, None)
-    request.session.pop("user_db", None)
+    request.session.pop("user_db_id", None)
     logout_url = oauth.auth0.server_metadata.get("end_session_endpoint")
     if not logout_url:
         logout_url = os.getenv("OIDC_LOGOUT_URL")
     return RedirectResponse(url=logout_url, status_code=303)
+
+@router.post("/login/prepaid")
+def login_prepaid(request: Request, prepaid_user_key: str = Form(...)):
+    t = text("SELECT id, username FROM users_prepaid WHERE user_key = :prepaid_user_key")
+    with engine.connect() as conn:
+        result = conn.execute(t, {"prepaid_user_key": prepaid_user_key}).fetchone()
+        if result:
+            user_db_id = result[0]
+            username = result[1]
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    request.session["user_db_id"] = user_db_id
+    request.session[SESSION_KEY] = {"name": username, "preferred_username": username, "groups": [], "prepaid": True}
+    return RedirectResponse(url="/", status_code=303)

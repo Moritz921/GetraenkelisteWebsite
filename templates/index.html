@@ -72,4 +72,39 @@ content %}
         </button>
     </form>
 </div>
-{% endif %} {% endif %} {% endblock %}
+{% endif %} {% endif %}
+
+{% if user.prepaid %}
+<div style="display: flex; justify-content: center; text-align: center">
+    <form method="post" action="/drink_prepaid">
+        <button
+            type="submit"
+            style="
+                background-color: rgb(165, 171, 82);
+                color: rgb(255, 255, 255);
+                font-size: 1.5em;
+                padding: 0.75em 2em;
+                border: none;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+                cursor: pointer;
+                transition: background 0.2s;
+            "
+        >
+            Getränk abziehen
+        </button>
+    </form>
+</div>
+<p>Deine aktuelle Ansprechperson ist:</p>
+<div
+    style="
+        text-align: center;
+        font-size: 2em;
+        color: var(--goetheblau);
+        margin: 0.5em 0;
+    "
+>
+    ID {{ db_user.postpaid_user_id }}
+</div>
+{% endif %}
+{% endblock %}
