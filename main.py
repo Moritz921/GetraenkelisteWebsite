@@ -12,6 +12,10 @@ from db.models import get_postpaid_user
 from db.models import get_postpaid_user_by_username
 from db.models import set_postpaid_user_money
 from db.models import drink_postpaid_user
+from db.models import toggle_activate_postpaid_user
+from db.models import get_prepaid_user
+from db.models import get_prepaid_user_by_username
+from db.models import create_prepaid_user
 
 from auth.session import get_current_user
 
@@ -41,6 +45,7 @@ def home(request: Request):
     if not user_db_id or not user_authentik:
         raise HTTPException(status_code=404, detail="User nicht gefunden")
     users = None
+    db_users_prepaid = None
     if ADMIN_GROUP in user_authentik["groups"]:
         with engine.connect() as conn:
             t = text("SELECT id FROM users_postpaid")
@@ -51,8 +56,24 @@ def home(request: Request):
                     user_db = get_postpaid_user(row[0])
                     if user_db:
                         users.append(user_db)
+            t = text("SELECT id FROM users_prepaid")
+            result = conn.execute(t).fetchall()
+            print(f"Result: {result}")
+            if result:
+                db_users_prepaid = []
+                for row in result:
+                    prepaid_user = get_prepaid_user(row[0])
+                    if prepaid_user:
+                        db_users_prepaid.append(prepaid_user)
     db_user = get_postpaid_user(user_db_id)
-    return templates.TemplateResponse("index.html", {"request": request, "user": user_authentik, "users": users, "user_db_id": user_db_id, "db_user": db_user})
+    print("db_users_prepaid", db_users_prepaid)
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "user": user_authentik,
+        "users": users,
+        "user_db_id": user_db_id,
+        "db_user": db_user, 
+        "db_users_prepaid": db_users_prepaid})
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
@@ -144,6 +165,52 @@ def payup(request: Request, username: str = Form(...), money: float = Form(...))
     current_user_money = get_postpaid_user(current_user_db_id)["money"]
     set_postpaid_user_money(current_user_db_id, current_user_money - money*100)
     return RedirectResponse(url="/", status_code=303)
+
+@app.post("/toggle_activated_user_postpaid")
+def toggle_activated_user_postpaid(request: Request, username: str = Form(...)):
+    user_auth = request.session.get("user_authentik")
+    if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
+        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+
+    user_db_id = get_postpaid_user_by_username(username)["id"]
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User nicht gefunden")
+
+    toggle_activate_postpaid_user(user_db_id)
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/add_prepaid_user")
+def add_prepaid_user(request: Request, username: str = Form(...), start_money: float = Form(...)):
+    active_user_auth = request.session.get("user_authentik")
+    active_user_db_id = request.session.get("user_db_id")
+    if not active_user_auth or ADMIN_GROUP not in active_user_auth["groups"]:
+        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+    if not active_user_db_id:
+        raise HTTPException(status_code=404, detail="Aktueller User nicht gefunden")
+    if not username:
+        raise HTTPException(status_code=400, detail="Username ist leer")
+
+    user_exists = False
+    try:
+        get_postpaid_user_by_username(username)
+        user_exists = True
+        get_prepaid_user_by_username(username)
+        user_exists = True
+    except HTTPException:
+        pass
+
+    if user_exists:
+        raise HTTPException(status_code=400, detail="User existiert bereits")
+
+    create_prepaid_user(username, active_user_db_id, int(start_money*100))
+
+    prev_money = get_postpaid_user(active_user_db_id)["money"]
+    set_postpaid_user_money(active_user_db_id, prev_money - int(start_money*100))
+
+    return RedirectResponse(url="/", status_code=303)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

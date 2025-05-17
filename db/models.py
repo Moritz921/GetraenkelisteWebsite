@@ -16,6 +16,7 @@ Functions:
     - drink_postpaid_user(user_id: int) -> int:
         Deducts 100 units from the specified postpaid user's balance and records a drink entry. Raises HTTPException if the user is not found or if the drink entry could not be created. Returns the number of rows affected by the drink entry insertion.
 """
+import secrets
 from sqlalchemy import create_engine, text
 from fastapi import HTTPException
 
@@ -42,7 +43,7 @@ with engine.connect() as conn:
                           user_key TEXT NOT NULL UNIQUE,
                           postpaid_user_id INTEGER NOT NULL,
                           money INT DEFAULT 0,
-                          activated BOOLEAN DEFAULT 0,
+                          activated BOOLEAN DEFAULT 1,
                           last_drink TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                           FOREIGN KEY (postpaid_user_id) REFERENCES users_postpaid(id)
                       )
@@ -172,6 +173,10 @@ def drink_postpaid_user(user_id: int):
         int: The number of rows affected by the drink entry insertion (should be 1 on success).
     """
 
+    activated = get_postpaid_user(user_id)["activated"]
+    if not activated:
+        raise HTTPException(status_code=403, detail="User not activated")
+
     prev_money = get_postpaid_user(user_id)["money"]
     t = text("UPDATE users_postpaid SET money = :money, last_drink = CURRENT_TIMESTAMP WHERE id = :id")
     with engine.connect() as connection:
@@ -187,3 +192,82 @@ def drink_postpaid_user(user_id: int):
             raise HTTPException(status_code=500, detail="Failed to create drink entry")
         connection.commit()
     return result.rowcount
+
+def toggle_activate_postpaid_user(user_id: int):
+    prev_activated = get_postpaid_user(user_id)["activated"]
+    t = text("UPDATE users_postpaid SET activated = :activated WHERE id = :id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"id": user_id, "activated": not prev_activated})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        connection.commit()
+    return result.rowcount
+
+
+def get_prepaid_user(user_id: int):
+    t = text("SELECT id, username, user_key, postpaid_user_id, money, activated, last_drink FROM users_prepaid WHERE id = :id")
+    user_db = {}
+    with engine.connect() as connection:
+        result = connection.execute(t, {"id": user_id}).fetchone()
+        if result:
+            user_db["id"] = result[0]
+            user_db["username"] = result[1]
+            user_db["user_key"] = result[2]
+            user_db["postpaid_user_id"] = result[3]
+            user_db["money"] = result[4]
+            user_db["activated"] = result[5]
+            user_db["last_drink"] = result[6]
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
+    return user_db
+
+def get_prepaid_user_by_username(username: str):
+    """
+    Retrieve a prepaid user from the database by their username.
+    Args:
+        username (str): The username of the user to retrieve.
+    Returns:
+        dict: A dictionary containing the user's id, username, money, activated status, and last_drink timestamp.
+    Raises:
+        HTTPException: If no user with the given username is found, raises a 404 HTTPException.
+    """
+
+    t = text("SELECT id, username, user_key, postpaid_user_id, money, activated, last_drink FROM users_prepaid WHERE username = :username")
+    user_db = {}
+    with engine.connect() as connection:
+        result = connection.execute(t, {"username": username}).fetchone()
+        if result:
+            user_db["id"] = result[0]
+            user_db["username"] = result[1]
+            user_db["user_key"] = result[2]
+            user_db["postpaid_user_id"] = result[3]
+            user_db["money"] = result[4]
+            user_db["activated"] = result[5]
+            user_db["last_drink"] = result[6]
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
+    return user_db
+
+def create_prepaid_user(prepaid_username: str, postpaid_user_id: int, start_money: int = 0):
+    prepaid_key = secrets.token_urlsafe(6)
+    t = text("INSERT INTO users_prepaid (username, user_key, postpaid_user_id, money) VALUES (:username, :user_key, :postpaid_user_id, :start_money)")
+    with engine.connect() as connection:
+
+        # Check if user already exists in prepaid
+        sel = text("SELECT * FROM users_prepaid WHERE username = :username")
+        if connection.execute(sel, {"username": prepaid_username}).fetchone():
+            raise HTTPException(status_code=400, detail="User already exists")
+
+        result = connection.execute(
+            t,
+            {
+                "username": str(prepaid_username),
+                "user_key": str(prepaid_key),
+                "postpaid_user_id": int(postpaid_user_id),
+                "start_money": int(start_money),
+            })
+        if result.rowcount == 0:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+        connection.commit()
+
+    return result.lastrowid

@@ -24,7 +24,75 @@
             {% block content %}{% endblock %} {% if user %} {% if 'Fachschaft'
             in user.groups %}
             <p>Du bist Teil der Fachschaft Informatik.</p>
-            {% endif %} {% if 'Fachschaft Admins' in user.groups %}
+            <p>Füge Nutzer zur Prepaid Liste hinzu:</p>
+            <form
+                method="post"
+                action="/add_prepaid_user"
+                style="
+                    display: flex;
+                    gap: 1em;
+                    align-items: center;
+                    margin-bottom: 1em;
+                    background: var(--hellgrau);
+                    padding: 1em;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+                    max-width: 600px;
+                "
+            >
+                <label
+                    for="username"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Username:</label
+                >
+                <input
+                    id="username"
+                    type="text"
+                    name="username"
+                    placeholder="Username"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        width: 100%;
+                    "
+                />
+                <label
+                    for="start_money"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Start Money (€):</label
+                >
+                <input
+                    id="start_money"
+                    type="number"
+                    name="start_money"
+                    placeholder="Start Money"
+                    step="0.01"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        width: 100px;
+                    "
+                />
+                <button
+                    type="submit"
+                    style="
+                        padding: 0.5em 1em;
+                        background: rgb(0, 97, 143);
+                        color: #fff;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    "
+                >
+                    Add User
+                </button>
+            </form>
+            {% endif %}
+            {% if 'Fachschaft Admins' in user.groups %}
             <h2>Admin Interface</h2>
             <p>Ausgleichszahlung:</p>
             <p>
@@ -100,7 +168,8 @@
                     Pay Up
                 </button>
             </form>
-            <p>Users in database:</p>
+            <h3>Postpaid Liste</h3>
+            <p>Users in postpaid database:</p>
             <table>
                 <thead>
                     <tr>
@@ -143,6 +212,57 @@
                     {% endfor %}
                 </tbody>
             </table>
+            <p>(De-)Activate User</p>
+            <form 
+                method="post"
+                action="/toggle_activated_user_postpaid"
+                style="
+                    display: flex;
+                    gap: 1em;
+                    align-items: center;
+                    margin-bottom: 1em;
+                    background: var(--hellgrau);
+                    padding: 1em;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+                    max-width: 600px;
+                "
+            >
+                <label
+                    for="activate-username"
+                    style="margin: 0 0.5em 0 0; font-weight: bold"
+                    >Username:</label
+                >
+                <select
+                    id="activate-username"
+                    name="username"
+                    required
+                    style="
+                        padding: 0.5em;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    "
+                >
+                    {% for db_user in users %}
+                    <option value="{{ db_user.username }}">
+                        {{ db_user.username }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button
+                    type="submit"
+                    style="
+                        padding: 0.5em 1em;
+                        background: rgb(0, 97, 143);
+                        color: #fff;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    "
+                >
+                    Toggle Activation
+                </button>
+            </form>
             <p>Set user money:</p>
             <form
                 method="post"
@@ -213,6 +333,66 @@
                     Set Money
                 </button>
             </form>
+            <h3>Prepaid Liste</h3>
+            <p>Users in prepaid database:</p>
+            <table>
+                <thread>
+                    <tr>
+                        <th style="padding: 0.5em 1em">ID</th>
+                        <th style="padding: 0.5em 1em">Username</th>
+                        <th style="padding: 0.5em 1em">Key</th>
+                        <th style="padding: 0.5em 1em">Postpaid_User ID</th>
+                        <th style="padding: 0.5em 1em">Money (€)</th>
+                        <th style="padding: 0.5em 1em">Activated</th>
+                        <th style="padding: 0.5em 1em">last drink</th>
+                    </tr>
+                </thread>
+                <tbody>
+                    {% if db_users_prepaid %}
+                        {% for prepaid_user_i in db_users_prepaid %}
+                        <tr
+                            {%
+                            if
+                            prepaid_user_i.money
+                            <=0
+                            %}
+                            style="background-color: rgba(179, 6, 44, 0.5)"
+                            {%
+                            endif
+                            %}
+                        >
+                            <td style="padding: 0.5em 1em">
+                                {{ prepaid_user_i.id }}
+                            </td>
+                            <td style="padding: 0.5em 1em">
+                                {{ prepaid_user_i.username }}
+                            </td>
+                            <td style="padding: 0.5em 1em">
+                                {{ prepaid_user_i.user_key }}
+                            </td>
+                            <td style="padding: 0.5em 1em">
+                                {{ prepaid_user_i.postpaid_user_id }}
+                            </td>
+                            <td style="padding: 0.5em 1em">
+                                {{ prepaid_user_i.money / 100 }}
+                            </td>
+                            <td style="padding: 0.5em 1em">
+                                {{ prepaid_user_i.activated }}
+                            </td>
+                            <td style="padding: 0.5em 1em">
+                                {{ prepaid_user_i.last_drink }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align: center">
+                            No users in prepaid database
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
             {% endif %} {% endif %}
         </main>
     </body>
