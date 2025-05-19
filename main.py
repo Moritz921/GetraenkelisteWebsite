@@ -19,6 +19,7 @@ from db.models import create_prepaid_user
 from db.models import drink_prepaid_user
 from db.models import toggle_activate_prepaid_user
 from db.models import set_prepaid_user_money
+from db.models import del_user_prepaid
 
 from auth import oidc
 
@@ -37,6 +38,8 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    
+    # Check if user is logged in and has a valid session
     user_db_id = request.session.get("user_db_id")
     user_authentik = request.session.get("user_authentik")
     if not user_db_id or not user_authentik:
@@ -45,9 +48,9 @@ def home(request: Request):
     user_db_id = request.session.get("user_db_id")
     user_authentik = request.session.get("user_authentik")
     if not user_db_id or not user_authentik:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
-    print(f"Current user: {user_authentik}")
-    print(f"Current user db id: {user_db_id}")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # if user is Admin, load all postpaid users
     users = None
     db_users_prepaid = None
     if ADMIN_GROUP in user_authentik["groups"]:
@@ -60,6 +63,9 @@ def home(request: Request):
                     user_db = get_postpaid_user(row[0])
                     if user_db:
                         users.append(user_db)
+
+    # if user is in Fachschaft, load all prepaid users
+    prepaid_users_from_curr_user = []
     if FS_GROUP in user_authentik["groups"]:
         with engine.connect() as conn:
             t = text("SELECT id FROM users_prepaid")
@@ -70,15 +76,23 @@ def home(request: Request):
                     prepaid_user = get_prepaid_user(row[0])
                     if prepaid_user:
                         db_users_prepaid.append(prepaid_user)
+            # additionally load all prepaid users from the current user
+            t = text("SELECT id, username, user_key, money, last_drink FROM users_prepaid WHERE postpaid_user_id = :user_db_id")
+            result = conn.execute(t, {"user_db_id": user_db_id}).fetchall()
+            if result:
+                prepaid_users_from_curr_user = []
+                for row in result:
+                    prepaid_user = get_prepaid_user(row[0])
+                    if prepaid_user:
+                        prepaid_users_from_curr_user.append(prepaid_user)
+
+    # load current user from database
     try:
         if user_authentik["prepaid"]:
-            print("Prepaid user")
             db_user = get_prepaid_user(user_db_id)
         else:
-            print("Postpaid user")
             db_user = get_postpaid_user(user_db_id)
     except KeyError:
-        print("Postpaid user")
         db_user = get_postpaid_user(user_db_id)
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -86,7 +100,8 @@ def home(request: Request):
         "users": users,
         "user_db_id": user_db_id,
         "db_user": db_user, 
-        "db_users_prepaid": db_users_prepaid})
+        "db_users_prepaid": db_users_prepaid,
+        "prepaid_users_from_curr_user": prepaid_users_from_curr_user,})
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
@@ -120,13 +135,8 @@ def set_money_postpaid(request: Request, username = Form(...), money: float = Fo
     if not user_authentik or ADMIN_GROUP not in user_authentik["groups"]:
         raise HTTPException(status_code=403, detail="Nicht erlaubt")
 
-    with engine.connect() as conn:
-        t = text("SELECT id FROM users_postpaid WHERE username = :username")
-        result = conn.execute(t, {"username": username}).fetchone()
-        if result:
-            requested_user_id = result[0]
-        else:
-            raise HTTPException(status_code=404, detail="User nicht gefunden")
+    user = get_postpaid_user_by_username(username)
+    requested_user_id = user["id"]
 
     set_postpaid_user_money(requested_user_id, money*100)
     return RedirectResponse(url="/", status_code=303)
@@ -150,11 +160,11 @@ def drink(request: Request):
 
     user_authentik = request.session.get("user_authentik")
     if not user_authentik or FS_GROUP not in user_authentik["groups"]:
-        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+        raise HTTPException(status_code=403, detail="Not allowed")
 
     user_db_id = request.session.get("user_db_id")
     if not user_db_id:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
+        raise HTTPException(status_code=404, detail="User not found")
 
     drink_postpaid_user(user_db_id)
     return RedirectResponse(url="/", status_code=303)
@@ -163,18 +173,18 @@ def drink(request: Request):
 def payup(request: Request, username: str = Form(...), money: float = Form(...)):
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
-        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+        raise HTTPException(status_code=403, detail="Not allowed")
 
     user_db_id = get_postpaid_user_by_username(username)["id"]
     if not user_db_id:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
+        raise HTTPException(status_code=404, detail="User not found")
 
     curr_user_money = get_postpaid_user(user_db_id)["money"]
     set_postpaid_user_money(user_db_id, curr_user_money + money*100)
 
     current_user_db_id = request.session.get("user_db_id")
     if not current_user_db_id:
-        raise HTTPException(status_code=404, detail="Aktueller User nicht gefunden")
+        raise HTTPException(status_code=404, detail="Current user not found")
     current_user_money = get_postpaid_user(current_user_db_id)["money"]
     set_postpaid_user_money(current_user_db_id, current_user_money - money*100)
     return RedirectResponse(url="/", status_code=303)
@@ -183,11 +193,11 @@ def payup(request: Request, username: str = Form(...), money: float = Form(...))
 def toggle_activated_user_postpaid(request: Request, username: str = Form(...)):
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
-        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+        raise HTTPException(status_code=403, detail="Not allowed")
 
     user_db_id = get_postpaid_user_by_username(username)["id"]
     if not user_db_id:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
+        raise HTTPException(status_code=404, detail="User not found")
 
     toggle_activate_postpaid_user(user_db_id)
 
@@ -199,11 +209,11 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
     active_user_auth = request.session.get("user_authentik")
     active_user_db_id = request.session.get("user_db_id")
     if not active_user_auth or ADMIN_GROUP not in active_user_auth["groups"]:
-        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+        raise HTTPException(status_code=403, detail="Not allowed")
     if not active_user_db_id:
-        raise HTTPException(status_code=404, detail="Aktueller User nicht gefunden")
+        raise HTTPException(status_code=404, detail="Current user not found")
     if not username:
-        raise HTTPException(status_code=400, detail="Username ist leer")
+        raise HTTPException(status_code=400, detail="Username is empty")
 
     user_exists = False
     try:
@@ -215,7 +225,7 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
         pass
 
     if user_exists:
-        raise HTTPException(status_code=400, detail="User existiert bereits")
+        raise HTTPException(status_code=400, detail="User already exists")
 
     create_prepaid_user(username, active_user_db_id, int(start_money*100))
 
@@ -228,12 +238,12 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
 def drink_prepaid(request: Request):
     user_db_id = request.session.get("user_db_id")
     if not user_db_id:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
+        raise HTTPException(status_code=404, detail="User not found")
     user_authentik = request.session.get("user_authentik")
     if not user_authentik:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
+        raise HTTPException(status_code=404, detail="User not found")
     if not user_authentik["prepaid"]:
-        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+        raise HTTPException(status_code=403, detail="Not allowed")
 
     drink_prepaid_user(user_db_id)
     return RedirectResponse(url="/", status_code=303)
@@ -242,11 +252,11 @@ def drink_prepaid(request: Request):
 def toggle_activated_user_prepaid(request: Request, username: str = Form(...)):
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
-        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+        raise HTTPException(status_code=403, detail="Not allowed")
 
     user_db_id = get_prepaid_user_by_username(username)["id"]
     if not user_db_id:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
+        raise HTTPException(status_code=404, detail="User not found")
 
     toggle_activate_prepaid_user(user_db_id)
 
@@ -256,7 +266,7 @@ def toggle_activated_user_prepaid(request: Request, username: str = Form(...)):
 def add_money_prepaid_user(request: Request, username: str = Form(...), money: float = Form(...)):
     curr_user_auth = request.session.get("user_authentik")
     if not curr_user_auth or FS_GROUP not in curr_user_auth["groups"]:
-        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+        raise HTTPException(status_code=403, detail="Not allowed")
     curr_user_db_id = request.session.get("user_db_id")
     if not curr_user_db_id:
         raise HTTPException(status_code=404, detail="Logged In User not found")
@@ -270,6 +280,25 @@ def add_money_prepaid_user(request: Request, username: str = Form(...), money: f
 
     set_postpaid_user_money(curr_user_db_id, curr_user_money - money*100)
     set_prepaid_user_money(prepaid_user_db_id, prepaid_user_money + money*100, curr_user_db_id)
+
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/del_prepaid_user")
+def delete_prepaid_user(request: Request, username: str = Form(...)):
+    
+    # check if user is in ADMIN_GROUP
+    user_auth = request.session.get("user_authentik")
+    if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
+        raise HTTPException(status_code=403, detail="Nicht erlaubt")
+
+    user_to_del = get_prepaid_user_by_username(username)
+    if not user_to_del["id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user_to_del["money"] > 0:
+        raise HTTPException(status_code=400, detail="User still has money")
+
+    del_user_prepaid(user_to_del["id"])
 
     return RedirectResponse(url="/", status_code=303)
 

@@ -320,3 +320,12 @@ def set_prepaid_user_money(user_id: int, money: int, postpaid_user_id: int):
             raise HTTPException(status_code=404, detail="User not found")
         connection.commit()
     return result.rowcount
+
+def del_user_prepaid(user_id: int):
+    t = text("DELETE FROM users_prepaid WHERE id = :id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"id": user_id})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        connection.commit()
+    return result.rowcount
