@@ -25,6 +25,7 @@ from auth import oidc
 
 
 ADMIN_GROUP = "Fachschaft Admins"
+FS_GROUP = "Fachschaft"
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="my_secret_key")
@@ -59,6 +60,8 @@ def home(request: Request):
                     user_db = get_postpaid_user(row[0])
                     if user_db:
                         users.append(user_db)
+    if FS_GROUP in user_authentik["groups"]:
+        with engine.connect() as conn:
             t = text("SELECT id FROM users_prepaid")
             result = conn.execute(t).fetchall()
             if result:
@@ -146,7 +149,7 @@ def drink(request: Request):
     """
 
     user_authentik = request.session.get("user_authentik")
-    if not user_authentik or ADMIN_GROUP not in user_authentik["groups"]:
+    if not user_authentik or FS_GROUP not in user_authentik["groups"]:
         raise HTTPException(status_code=403, detail="Nicht erlaubt")
 
     user_db_id = request.session.get("user_db_id")
@@ -252,7 +255,7 @@ def toggle_activated_user_prepaid(request: Request, username: str = Form(...)):
 @app.post("/add_money_prepaid_user")
 def add_money_prepaid_user(request: Request, username: str = Form(...), money: float = Form(...)):
     curr_user_auth = request.session.get("user_authentik")
-    if not curr_user_auth or ADMIN_GROUP not in curr_user_auth["groups"]:
+    if not curr_user_auth or FS_GROUP not in curr_user_auth["groups"]:
         raise HTTPException(status_code=403, detail="Nicht erlaubt")
     curr_user_db_id = request.session.get("user_db_id")
     if not curr_user_db_id:

@@ -78,13 +78,14 @@ def create_postpaid_user(username: str):
         int: The ID of the newly created user.
     """
 
-    t = text("INSERT INTO users_postpaid (username) VALUES (:username)")
+    print(f"create_postpaid_user: {username}")
+    t_insert = text("INSERT INTO users_postpaid (username) VALUES (:username)")
     with engine.connect() as connection:
-        t = text("SELECT * FROM users_postpaid WHERE username = :username")
-        if connection.execute(t, {"username": username}).fetchone():
+        t_select = text("SELECT * FROM users_postpaid WHERE username = :username")
+        if connection.execute(t_select, {"username": username}).fetchone():
             raise HTTPException(status_code=400, detail="User already exists")
         try:
-            res = connection.execute(t, {"username": username})
+            res = connection.execute(t_insert, {"username": username})
             if res.rowcount == 0:
                 raise HTTPException(status_code=500, detail="Failed to create user")
         except Exception as e:

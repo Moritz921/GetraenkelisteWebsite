@@ -106,7 +106,7 @@ async def authorize(request: Request):
         if result:
             user_db_id = result[0]
         else:
-            print("Create User in DB")
+            print(f"User {profile['preferred_username']} not found in database, creating new user.")
             user_db_id = create_postpaid_user(profile["preferred_username"])
 
     request.session["user_db_id"] = user_db_id
