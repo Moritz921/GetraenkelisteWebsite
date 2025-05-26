@@ -34,7 +34,8 @@ with engine.connect() as conn:
                           username TEXT NOT NULL UNIQUE,
                           money INT DEFAULT 0,
                           activated BOOLEAN DEFAULT 0,
-                          last_drink TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                          last_drink TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          survey BOOLEAN DEFAULT 0
                         )
                       """))
 
