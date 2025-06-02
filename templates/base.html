@@ -12,7 +12,7 @@
         <h1>Getränkeliste</h1>
         {% if user %}
             <p>
-                Angemeldet als {{ user.preferred_username }}{% if 'Fachschaft Admins' in user.groups %} (Admin){% endif %} –
+                Angemeldet als {{ user.preferred_username }}{% if 'Getraenkeliste Verantwortliche' in user.groups %} (Admin){% endif %} –
                 <a href="/logout">Logout</a>
             </p>
         {% endif %}
@@ -20,7 +20,7 @@
     <main>
         {% block content %}{% endblock %}
         {% if user %}
-            {% if 'Fachschaft' in user.groups %}
+            {% if 'Getraenkeliste Postpaid' in user.groups %}
                 <p>Du bist Teil der Fachschaft Informatik.</p>
                 {% if prepaid_users_from_curr_user %}
                     <p>Liste deiner Prepaid-User:</p>
@@ -76,7 +76,7 @@
                     <p>Es sind keine Prepaid-User vorhanden.</p>
                 {% endif %}
             {% endif %}
-            {% if 'Fachschaft Admins' in user.groups %}
+            {% if 'Getraenkeliste Verantwortliche' in user.groups %}
                 <h2>Admin Interface</h2>
                 <p>Ausgleichszahlung:</p>
                 <p>Der eingegebene Betrag wird vom aktuell eingeloggten Nutzer abgezogen und dem eingetragenem Nutzer gutgeschrieben.</p>

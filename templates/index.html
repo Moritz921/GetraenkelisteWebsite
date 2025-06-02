@@ -30,7 +30,7 @@ content %}
         Bitte begleiche deinen offenen Betrag!
     </span>
 </div>
-{% endif %} {% if 'Fachschaft' in user.groups %} {% if db_user.money > -5000 %}
+{% endif %} {% if 'Getraenkeliste Postpaid' in user.groups %} {% if db_user.money > -5000 %}
 <div style="display: flex; justify-content: center; text-align: center">
     <form method="post" action="/drink">
         <button

@@ -25,8 +25,8 @@ from auth import oidc
 
 
 
-ADMIN_GROUP = "Fachschaft Admins"
-FS_GROUP = "Fachschaft"
+ADMIN_GROUP = "Getraenkeliste Verantwortliche"
+FS_GROUP = "Getraenkeliste Postpaid"
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="my_secret_key")
@@ -94,6 +94,7 @@ def home(request: Request):
             db_user = get_postpaid_user(user_db_id)
     except KeyError:
         db_user = get_postpaid_user(user_db_id)
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "user": user_authentik,
