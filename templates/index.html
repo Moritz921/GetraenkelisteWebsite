@@ -107,4 +107,64 @@ content %}
     ID {{ db_user.postpaid_user_id }}
 </div>
 {% endif %}
+<div id="popup" style="display:none; position:fixed; top:25%; left:50%; transform:translate(-50%, -25%);
+     background:#fff; border:2px solid #00618F; border-radius:12px; padding:1em; box-shadow:0 0 20px rgba(0,0,0,0.3); z-index:1000; max-width:90%; text-align:center;">
+    <h2>Wähle dein Getränk oder warte bitte</h2>
+    <div id="popup-getraenke" style="margin: 1em 0;"></div>
+    <div id="progress-container" style="height:10px; background:#ccc; border-radius:5px; overflow:hidden;">
+        <div id="progress-bar" style="height:10px; background:#00618F; width:100%; transition: width 0.1s linear;"></div>
+    </div>
+</div>
+
+<script>
+    async function showDrinkPopup() {
+        const response = await fetch("/popup_getraenke");
+        const data = await response.json();
+        const container = document.getElementById("popup-getraenke");
+        container.innerHTML = "";
+
+        data.getraenke.forEach(name => {
+            const btn = document.createElement("button");
+            btn.textContent = name;
+            btn.style.margin = "0.5em";
+            btn.style.padding = "0.5em 1em";
+            btn.style.borderRadius = "6px";
+            btn.style.border = "1px solid #00618F";
+            btn.style.background = "#e0f4ff";
+            btn.style.cursor = "pointer";
+            btn.onclick = () => {
+                document.getElementById("getraenk-auswahl").value = name;
+                document.getElementById("popup").style.display = "none";
+                document.getElementById("drink-form").submit();
+            };
+            container.appendChild(btn);
+        });
+
+        document.getElementById("popup").style.display = "block";
+
+        let dauer = 3; // Sekunden
+        let verbleibend = dauer;
+        const bar = document.getElementById("progress-bar");
+        bar.style.width = "100%";
+
+        const interval = setInterval(() => {
+            verbleibend -= 0.1;
+            bar.style.width = (verbleibend / dauer * 100) + "%";
+            if (verbleibend <= 0) {
+                clearInterval(interval);
+                const auswahlInput = document.getElementById("getraenk-auswahl");
+                if (auswahlInput) {
+                    auswahlInput.value = "";
+                }
+                document.getElementById("popup").style.display = "none";
+                const drinkForm = document.getElementById("drink-form");
+                if (drinkForm) {
+                    drinkForm.submit();
+                }
+            }
+        }, 100);
+        console.log("Popup angezeigt und Fortschrittsbalken gestartet.");
+    }
+</script>
+
 {% endblock %}

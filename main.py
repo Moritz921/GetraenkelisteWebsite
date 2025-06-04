@@ -1,7 +1,10 @@
+import random
+
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 import uvicorn
@@ -143,7 +146,7 @@ def set_money_postpaid(request: Request, username = Form(...), money: float = Fo
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/drink")
-def drink(request: Request):
+async def drink(request: Request):
     """
     Handles a drink purchase request for a user.
     Checks if the user is authenticated and belongs to the admin group. If not, raises a 403 error.
@@ -167,7 +170,11 @@ def drink(request: Request):
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
 
-    drink_postpaid_user(user_db_id)
+    form = await request.form()
+    getraenk = str(form.get("getraenk"))
+    print(f"User {user_authentik["preferred_username"]} requested drink: {getraenk}")
+
+    drink_postpaid_user(user_db_id, getraenk)
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/payup")
@@ -286,7 +293,6 @@ def add_money_prepaid_user(request: Request, username: str = Form(...), money: f
 
 @app.post("/del_prepaid_user")
 def delete_prepaid_user(request: Request, username: str = Form(...)):
-    
     # check if user is in ADMIN_GROUP
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
@@ -302,6 +308,12 @@ def delete_prepaid_user(request: Request, username: str = Form(...)):
     del_user_prepaid(user_to_del["id"])
 
     return RedirectResponse(url="/", status_code=303)
+
+@app.get("/popup_getraenke")
+async def popup_getraenke():
+    alle_getraenke = ["Wasser", "Cola", "Bier", "Mate", "Saft", "Tee", "Kaffee", "Limo"]
+    return JSONResponse(content={"getraenke": random.sample(alle_getraenke, 4)})
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

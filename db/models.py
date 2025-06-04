@@ -27,7 +27,7 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 DRINK_COST = 100  # cent
 
 with engine.connect() as conn:
-    # Create a new table for postpaid users
+    # Create a table for postpaid users
     conn.execute(text("""
                       CREATE TABLE IF NOT EXISTS users_postpaid (
                           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +39,7 @@ with engine.connect() as conn:
                         )
                       """))
 
+    # create a table for every prepaid user
     conn.execute(text("""
                       CREATE TABLE IF NOT EXISTS users_prepaid (
                           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,6 +53,7 @@ with engine.connect() as conn:
                       )
                       """))
 
+    # create a table for every push on the drink button
     conn.execute(text("""
                       CREATE TABLE IF NOT EXISTS drinks (
                           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,9 +65,90 @@ with engine.connect() as conn:
                           FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id)
                       )
                       """))
+
+    # create a table for every money transaction
+    conn.execute(text("""
+                      CREATE TABLE IF NOT EXISTS transactions (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          postpaid_user_id INTEGER,
+                          prepaid_user_id INTEGER,
+                          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          previous_money INT NOT NULL,
+                          new_money INT NOT NULL,
+                          delta_money INT NOT NULL,
+                          description TEXT,
+                          FOREIGN KEY (postpaid_user_id) REFERENCES users_postpaid(id),
+                          FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id)
+                      )
+                      """))
     conn.commit()
 
 
+
+def _log_transaction(
+        user_id: int,
+        user_is_postpaid: bool,
+        previous_money_cent = None,
+        new_money_cent = None,
+        delta_money_cent = None,
+        description = None
+    ):
+    """
+        Logs a transaction for a user, recording changes in their account balance.
+        Depending on whether the user is postpaid or prepaid, retrieves the previous balance if not provided,
+        calculates the new balance and delta if necessary, and inserts a transaction record into the database.
+        Args:
+            user_id (int): The ID of the user for whom the transaction is being logged.
+            user_is_postpaid (bool): True if the user is postpaid, False if prepaid.
+            previous_money_cent (Optional[int], default=None): The user's previous balance in cents. If None, it is fetched from the database.
+            new_money_cent (Optional[int], default=None): The user's new balance in cents. If None, it is calculated using delta_money_cent.
+            delta_money_cent (Optional[int], default=None): The change in balance in cents. If None, it is calculated using new_money_cent.
+            description (Optional[str], default=None): A description of the transaction.
+        Raises:
+            HTTPException: If the user is not found, if both new_money_cent and delta_money_cent are missing,
+                           or if the transaction could not be logged.
+        Returns:
+            int: The ID of the newly created transaction record.
+        """
+    if previous_money_cent is None:
+        if user_is_postpaid:
+            t_get_prev_money = text("SELECT money FROM users_postpaid WHERE id = :id")
+        else:
+            t_get_prev_money = text("SELECT money FROM users_prepaid WHERE id = :id")
+        with engine.connect() as connection:
+            res = connection.execute(t_get_prev_money, {"id": user_id}).fetchone()
+            if res:
+                previous_money_cent = int(res[0])
+            else:
+                raise HTTPException(status_code=404, detail="User not found")
+    if new_money_cent is None and delta_money_cent is None:
+        raise HTTPException(status_code=400, detail="Either new_money or delta_money must be provided, not both")
+    if new_money_cent is None and delta_money_cent is not None:
+        new_money_cent = previous_money_cent + delta_money_cent
+    elif delta_money_cent is None and new_money_cent is not None:
+        delta_money_cent = new_money_cent - previous_money_cent
+
+    # here we definitly have all the variables
+    if user_is_postpaid:
+        t = text("INSERT INTO transactions (postpaid_user_id, previous_money, new_money, delta_money, description) VALUES (:user_id, :previous_money, :new_money, :delta_money, :description)")
+    else:
+        t = text("INSERT INTO transactions (prepaid_user_id, previous_money, new_money, delta_money, description) VALUES (:user_id, :previous_money, :new_money, :delta_money, :description)")
+    with engine.connect() as connection:
+        result = connection.execute(
+            t,
+            {
+                "user_id": user_id,
+                "previous_money": previous_money_cent,
+                "new_money": new_money_cent,
+                "delta_money": delta_money_cent,
+                "description": description
+            }
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=500, detail="Failed to log transaction")
+        connection.commit()
+
+    return result.lastrowid
 
 def create_postpaid_user(username: str):
     """
@@ -105,7 +188,7 @@ def get_postpaid_user(user_id: int):
     Raises:
         HTTPException: If no user with the given ID is found, raises a 404 HTTPException.
     """
-    
+
     t = text("SELECT id, username, money, activated, last_drink FROM users_postpaid WHERE id = :id")
     user_db = {}
     with engine.connect() as connection:
@@ -130,7 +213,7 @@ def get_postpaid_user_by_username(username: str):
     Raises:
         HTTPException: If no user with the given username is found, raises a 404 HTTPException.
     """
-    
+
     t = text("SELECT id, username, money, activated, last_drink FROM users_postpaid WHERE username = :username")
     user_db = {}
     with engine.connect() as connection:
@@ -158,6 +241,7 @@ def set_postpaid_user_money(user_id: int, money: float):
     """
 
     print(f"set_postpaid_user_money: {user_id}, {money}")
+    _log_transaction(user_id, user_is_postpaid=True, new_money_cent=money, description="Set money manually via Admin UI")
     t = text("UPDATE users_postpaid SET money = :money WHERE id = :id")
     with engine.connect() as connection:
         result = connection.execute(t, {"id": user_id, "money": money})
@@ -166,7 +250,7 @@ def set_postpaid_user_money(user_id: int, money: float):
         connection.commit()
     return result.rowcount
 
-def drink_postpaid_user(user_id: int):
+def drink_postpaid_user(user_id: int, drink_type: str = ""):
     """
     Deducts 100 units from the specified postpaid user's balance and records a drink entry.
     Args:
@@ -182,6 +266,13 @@ def drink_postpaid_user(user_id: int):
         raise HTTPException(status_code=403, detail="User not activated")
 
     prev_money = get_postpaid_user(user_id)["money"]
+    _log_transaction(
+        user_id=user_id,
+        user_is_postpaid=True,
+        previous_money_cent=prev_money,
+        delta_money_cent=-DRINK_COST,
+        description="Drink button pressed"
+    )
     t = text("UPDATE users_postpaid SET money = :money, last_drink = CURRENT_TIMESTAMP WHERE id = :id")
     with engine.connect() as connection:
         result = connection.execute(t, {"id": user_id, "money": prev_money - DRINK_COST})
@@ -189,9 +280,14 @@ def drink_postpaid_user(user_id: int):
             raise HTTPException(status_code=404, detail="User not found")
         connection.commit()
 
+    t_without_drink_type = text("INSERT INTO drinks (postpaid_user_id, timestamp) VALUES (:postpaid_user_id, CURRENT_TIMESTAMP)")
+    t_with_drink_type = text("INSERT INTO drinks (postpaid_user_id, timestamp, drink_type) VALUES (:postpaid_user_id, CURRENT_TIMESTAMP, :drink_type)")
+
     with engine.connect() as connection:
-        t = text("INSERT INTO drinks (postpaid_user_id, timestamp) VALUES (:postpaid_user_id, CURRENT_TIMESTAMP)")
-        result = connection.execute(t, {"postpaid_user_id": user_id})
+        if not drink_type:
+            result = connection.execute(t_without_drink_type, {"postpaid_user_id": user_id})
+        else:
+            result = connection.execute(t_with_drink_type, {"postpaid_user_id": user_id, "drink_type": drink_type})
         if result.rowcount == 0:
             raise HTTPException(status_code=500, detail="Failed to create drink entry")
         connection.commit()
@@ -284,6 +380,13 @@ def drink_prepaid_user(user_db_id: int):
     prev_money = user_dict["money"]
     if prev_money < DRINK_COST:
         raise HTTPException(status_code=403, detail="Not enough money")
+    _log_transaction(
+        user_id=user_db_id,
+        user_is_postpaid=False,
+        previous_money_cent=prev_money,
+        delta_money_cent=-DRINK_COST,
+        description="Drink button pressed"
+    )
     t = text("UPDATE users_prepaid SET money = :money, last_drink = CURRENT_TIMESTAMP WHERE id = :id")
     with engine.connect() as connection:
         result = connection.execute(t, {"id": user_db_id, "money": prev_money - DRINK_COST})
@@ -312,6 +415,12 @@ def toggle_activate_prepaid_user(user_id: int):
 def set_prepaid_user_money(user_id: int, money: int, postpaid_user_id: int):
     t1 = text("UPDATE users_prepaid SET money = :money WHERE id = :id")
     t2 = text("UPDATE users_prepaid SET postpaid_user_id = :postpaid_user_id WHERE id = :id")
+    _log_transaction(
+        user_id=user_id,
+        user_is_postpaid=False,
+        new_money_cent=money,
+        description="Set money manually via Admin UI"
+    )
     with engine.connect() as connection:
         result = connection.execute(t1, {"id": user_id, "money": money})
         if result.rowcount == 0:
