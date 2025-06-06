@@ -318,9 +318,6 @@ def delete_prepaid_user(request: Request, username: str = Form(...)):
     if not user_to_del["id"]:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if user_to_del["money"] > 0:
-        raise HTTPException(status_code=400, detail="User still has money")
-
     del_user_prepaid(user_to_del["id"])
 
     return RedirectResponse(url="/", status_code=303)
