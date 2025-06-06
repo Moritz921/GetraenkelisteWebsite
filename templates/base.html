@@ -56,25 +56,17 @@
                     <table>
                         <thead>
                             <tr>
-                                <th style="padding: 0.5em 1em">ID</th>
                                 <th style="padding: 0.5em 1em">Username</th>
                                 <th style="padding: 0.5em 1em">Key</th>
-                                <th style="padding: 0.5em 1em">Postpaid_User ID</th>
                                 <th style="padding: 0.5em 1em">Money (€)</th>
-                                <th style="padding: 0.5em 1em">Activated</th>
-                                <th style="padding: 0.5em 1em">last drink</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for prepaid_user_i in prepaid_users_from_curr_user %}
                                 <tr{% if prepaid_user_i.money <= 0 %} style="background-color: rgba(179, 6, 44, 0.5)"{% endif %}>
-                                    <td style="padding: 0.5em 1em">{{ prepaid_user_i.id }}</td>
                                     <td style="padding: 0.5em 1em">{{ prepaid_user_i.username }}</td>
                                     <td style="padding: 0.5em 1em">{{ prepaid_user_i.user_key }}</td>
-                                    <td style="padding: 0.5em 1em">{{ prepaid_user_i.postpaid_user_id }}</td>
                                     <td style="padding: 0.5em 1em">{{ prepaid_user_i.money / 100 }}</td>
-                                    <td style="padding: 0.5em 1em">{{ prepaid_user_i.activated }}</td>
-                                    <td style="padding: 0.5em 1em">{{ prepaid_user_i.last_drink }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>

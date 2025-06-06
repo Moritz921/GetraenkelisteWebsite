@@ -246,7 +246,6 @@ def set_postpaid_user_money(user_id: int, money: float):
         int: The number of rows affected by the update operation.
     """
 
-    print(f"set_postpaid_user_money: {user_id}, {money}")
     _log_transaction(user_id, user_is_postpaid=True, new_money_cent=money, description="Set money manually via Admin UI")
     t = text("UPDATE users_postpaid SET money = :money WHERE id = :id")
     with engine.connect() as connection:
@@ -466,7 +465,6 @@ def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int 
             last_drink_time = last_drink_time.replace(tzinfo=datetime.timezone.utc)
         if (now - last_drink_time).total_seconds() > max_since_seconds:
             return None
-        print(f"get_last_drink: user_id={user_id}, user_is_postpaid={user_is_postpaid}, drink_id={drink_id}, timestamp={timestamp}, drink_type={drink_type}")
         return {"id": drink_id, "timestamp": timestamp, "drink_type": drink_type}
     
 def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink_cost: int = DRINK_COST):
@@ -481,7 +479,6 @@ def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink
 
     with engine.connect() as connection:
         # Check if the drink exists
-        print(f"revert_last_drink: user_id={user_id}, user_is_postpaid={user_is_postpaid}, drink_id={drink_id}, drink_cost={drink_cost}")
         drink_exists = connection.execute(del_t, {"user_id": user_id, "drink_id": drink_id}).rowcount > 0
         if not drink_exists:
             raise HTTPException(status_code=404, detail="Drink not found")

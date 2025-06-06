@@ -182,11 +182,7 @@ async def drink(request: Request):
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
 
-    form = await request.form()
-    getraenk = str(form.get("getraenk"))
-    print(f"User {user_authentik['preferred_username']} requested drink: {getraenk}")
-
-    drink_postpaid_user(user_db_id, getraenk)
+    drink_postpaid_user(user_db_id)
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/payup")
@@ -328,11 +324,6 @@ def delete_prepaid_user(request: Request, username: str = Form(...)):
     del_user_prepaid(user_to_del["id"])
 
     return RedirectResponse(url="/", status_code=303)
-
-@app.get("/popup_getraenke")
-async def popup_getraenke():
-    alle_getraenke = ["Wasser", "Cola", "Bier", "Mate", "Saft", "Tee", "Kaffee", "Limo"]
-    return JSONResponse(content={"getraenke": random.sample(alle_getraenke, 4)})
 
 @app.post("/del_last_drink")
 def del_last_drink(request: Request):
