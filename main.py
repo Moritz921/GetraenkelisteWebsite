@@ -23,6 +23,9 @@ from db.models import drink_prepaid_user
 from db.models import toggle_activate_prepaid_user
 from db.models import set_prepaid_user_money
 from db.models import del_user_prepaid
+from db.models import get_last_drink
+from db.models import revert_last_drink
+from db.models import update_drink_type
 
 from auth import oidc
 import os
@@ -95,13 +98,14 @@ def home(request: Request):
                         prepaid_users_from_curr_user.append(prepaid_user)
 
     # load current user from database
-    try:
-        if user_authentik["prepaid"]:
-            db_user = get_prepaid_user(user_db_id)
-        else:
-            db_user = get_postpaid_user(user_db_id)
-    except KeyError:
+    user_is_postpaid = get_is_postpaid(user_authentik)
+    if user_is_postpaid:
         db_user = get_postpaid_user(user_db_id)
+    else:
+        db_user = get_prepaid_user(user_db_id)
+
+    # get last drink for current user, if not less than 60 seconds ago
+    last_drink = get_last_drink(user_db_id, user_is_postpaid, 60)
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -110,7 +114,10 @@ def home(request: Request):
         "user_db_id": user_db_id,
         "db_user": db_user, 
         "db_users_prepaid": db_users_prepaid,
-        "prepaid_users_from_curr_user": prepaid_users_from_curr_user,})
+        "prepaid_users_from_curr_user": prepaid_users_from_curr_user,
+        "last_drink": last_drink,
+        "avail_drink_types": ["Paulaner Spezi", "Mio Mate", "Club Mate", "Sonstiges"],
+    })
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
@@ -327,6 +334,57 @@ async def popup_getraenke():
     alle_getraenke = ["Wasser", "Cola", "Bier", "Mate", "Saft", "Tee", "Kaffee", "Limo"]
     return JSONResponse(content={"getraenke": random.sample(alle_getraenke, 4)})
 
+@app.post("/del_last_drink")
+def del_last_drink(request: Request):
+    user_db_id = request.session.get("user_db_id")
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User not found")
+    user_authentik = request.session.get("user_authentik")
+    if not user_authentik:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    last_drink = get_last_drink(user_db_id, True, 60)
+    if not last_drink:
+        return RedirectResponse(url="/", status_code=303)
+
+    user_is_postpaid = get_is_postpaid(user_authentik)
+
+    revert_last_drink(user_db_id, user_is_postpaid, last_drink["id"])
+
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/update_drink_post")
+def update_drink_post(request: Request, drink_type: str = Form(...)):
+    user_db_id = request.session.get("user_db_id")
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_authentik = request.session.get("user_authentik")
+    if not user_authentik:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    last_drink = get_last_drink(user_db_id, True, 60)
+    if not last_drink:
+        return RedirectResponse(url="/", status_code=303)
+
+    if not drink_type:
+        raise HTTPException(status_code=400, detail="Drink type is empty")
+
+    update_drink_type(user_db_id, get_is_postpaid(user_authentik), last_drink["id"], drink_type)
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+
+def get_is_postpaid(user_authentik) -> bool:
+    try:
+        if user_authentik["prepaid"]:
+            user_is_postpaid = False
+        else:
+            user_is_postpaid = True
+    except KeyError:
+        user_is_postpaid = True
+    return user_is_postpaid
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

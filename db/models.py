@@ -17,6 +17,7 @@ Functions:
         Deducts 100 units from the specified postpaid user's balance and records a drink entry. Raises HTTPException if the user is not found or if the drink entry could not be created. Returns the number of rows affected by the drink entry insertion.
 """
 import secrets
+import datetime
 from sqlalchemy import create_engine, text
 from fastapi import HTTPException
 
@@ -442,5 +443,76 @@ def del_user_prepaid(user_id: int):
         result = connection.execute(t, {"id": user_id})
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="User not found")
+        connection.commit()
+    return result.rowcount
+
+def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int = 60):
+    if user_is_postpaid:
+        t = text("SELECT id, timestamp, drink_type FROM drinks WHERE postpaid_user_id = :user_id ORDER BY timestamp DESC LIMIT 1")
+    else:
+        t = text("SELECT id, timestamp, drink_type FROM drinks WHERE prepaid_user_id = :user_id ORDER BY timestamp DESC LIMIT 1")
+
+    with engine.connect() as connection:
+        result = connection.execute(t, {"user_id": user_id}).fetchone()
+        if not result:
+            return None
+        drink_id, timestamp, drink_type = result
+
+    if timestamp:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        last_drink_time = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        # Ensure both are offset-aware
+        if last_drink_time.tzinfo is None:
+            last_drink_time = last_drink_time.replace(tzinfo=datetime.timezone.utc)
+        if (now - last_drink_time).total_seconds() > max_since_seconds:
+            return None
+        print(f"get_last_drink: user_id={user_id}, user_is_postpaid={user_is_postpaid}, drink_id={drink_id}, timestamp={timestamp}, drink_type={drink_type}")
+        return {"id": drink_id, "timestamp": timestamp, "drink_type": drink_type}
+    
+def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink_cost: int = DRINK_COST):
+    if user_is_postpaid:
+        del_t = text("DELETE FROM drinks WHERE postpaid_user_id = :user_id AND id = :drink_id")
+        update_t = text("UPDATE users_postpaid SET money = money + :drink_cost WHERE id = :user_id")
+        money_t = text("SELECT money FROM users_postpaid WHERE id = :user_id")
+    else:
+        del_t = text("DELETE FROM drinks WHERE prepaid_user_id = :user_id AND id = :drink_id")
+        update_t = text("UPDATE users_prepaid SET money = money + :drink_cost WHERE id = :user_id")
+        money_t = text("SELECT money FROM users_prepaid WHERE id = :user_id")
+
+    with engine.connect() as connection:
+        # Check if the drink exists
+        print(f"revert_last_drink: user_id={user_id}, user_is_postpaid={user_is_postpaid}, drink_id={drink_id}, drink_cost={drink_cost}")
+        drink_exists = connection.execute(del_t, {"user_id": user_id, "drink_id": drink_id}).rowcount > 0
+        if not drink_exists:
+            raise HTTPException(status_code=404, detail="Drink not found")
+
+        # Revert the money
+        prev_money = connection.execute(money_t, {"user_id": user_id}).fetchone()
+        if not prev_money:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        new_money = prev_money[0] + drink_cost
+        connection.execute(update_t, {"user_id": user_id, "drink_cost": drink_cost})
+        connection.commit()
+        
+        _log_transaction(
+            user_id=user_id,
+            user_is_postpaid=user_is_postpaid,
+            previous_money_cent=prev_money[0],
+            new_money_cent=new_money,
+            delta_money_cent=drink_cost,
+            description="Reverted last drink"
+        )
+
+def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type: str):
+    if user_is_postpaid:
+        t = text("UPDATE drinks SET drink_type = :drink_type WHERE postpaid_user_id = :user_id AND id = :drink_id")
+    else:
+        t = text("UPDATE drinks SET drink_type = :drink_type WHERE prepaid_user_id = :user_id AND id = :drink_id")
+
+    with engine.connect() as connection:
+        result = connection.execute(t, {"user_id": user_id, "drink_id": drink_id, "drink_type": drink_type})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Drink not found")
         connection.commit()
     return result.rowcount
