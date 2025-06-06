@@ -82,7 +82,7 @@ content %}
                     <input type="hidden" name="drink_type" value="{{ drink }}">
                     <button type="submit"
                         style="display: flex; flex-direction: column; align-items: center; background-color: #00618F; color: #fff; border: none; border-radius: 8px; padding: 0.7em 1.2em; cursor: pointer; min-width: 120px;">
-                        <img src="/static/drinks/{{ drink|lower|replace(' ', '_') }}.png" alt="{{ drink }}" style="width:48px; height:48px; object-fit:contain; margin-bottom:0.5em;">
+                        <img src="static/drinks/{{ drink|lower|replace(' ', '_') }}.png" alt="{{ drink }}" style="width:48px; height:48px; object-fit:contain; margin-bottom:0.5em;">
                         <span>{{ drink }}</span>
                     </button>
                 </form>
