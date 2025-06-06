@@ -177,7 +177,7 @@ async def drink(request: Request):
 
     form = await request.form()
     getraenk = str(form.get("getraenk"))
-    print(f"User {user_authentik["preferred_username"]} requested drink: {getraenk}")
+    print(f"User {user_authentik['preferred_username']} requested drink: {getraenk}")
 
     drink_postpaid_user(user_db_id, getraenk)
     return RedirectResponse(url="/", status_code=303)

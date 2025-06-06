@@ -23,6 +23,7 @@ from fastapi import HTTPException
 import os
 from dotenv import load_dotenv
 
+load_dotenv()
 DATABASE_FILE = os.getenv("DATABASE_FILE", "test.db")
 DATABASE_URL = "sqlite:///" + str(DATABASE_FILE)
 
