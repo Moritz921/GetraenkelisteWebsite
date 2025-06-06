@@ -20,7 +20,11 @@ import secrets
 from sqlalchemy import create_engine, text
 from fastapi import HTTPException
 
-DATABASE_URL = "sqlite:///./test.db"
+import os
+from dotenv import load_dotenv
+
+DATABASE_FILE = os.getenv("DATABASE_FILE", "test.db")
+DATABASE_URL = "sqlite:///" + str(DATABASE_FILE)
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 

@@ -25,6 +25,8 @@ from db.models import set_prepaid_user_money
 from db.models import del_user_prepaid
 
 from auth import oidc
+import os
+from dotenv import load_dotenv
 
 
 
@@ -32,7 +34,10 @@ ADMIN_GROUP = "Getraenkeliste Verantwortliche"
 FS_GROUP = "Getraenkeliste Postpaid"
 
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key="my_secret_key")
+load_dotenv()
+SECRET_KEY = os.getenv("SECRET_KEY", "my_secret_key")
+
+app.add_middleware(SessionMiddleware, secret_key=str(SECRET_KEY))
 app.include_router(oidc.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -236,9 +241,11 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
 
     if user_exists:
         raise HTTPException(status_code=400, detail="User already exists")
-    
+
     if start_money < 0 or start_money > 100:
         raise HTTPException(status_code=400, detail="Start money must be between 0 and 100")
+    if len(username) < 3 or len(username) > 20:
+        raise HTTPException(status_code=400, detail="Username must be between 3 and 20 characters")
 
     create_prepaid_user(username, active_user_db_id, int(start_money*100))
 
