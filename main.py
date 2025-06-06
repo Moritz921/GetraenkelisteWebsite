@@ -186,6 +186,8 @@ def payup(request: Request, username: str = Form(...), money: float = Form(...))
     user_db_id = get_postpaid_user_by_username(username)["id"]
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
+    if money < 0 or money > 1000:
+        raise HTTPException(status_code=400, detail="Money must be between 0 and 1000")
 
     curr_user_money = get_postpaid_user(user_db_id)["money"]
     set_postpaid_user_money(user_db_id, curr_user_money + money*100)
@@ -216,7 +218,7 @@ def toggle_activated_user_postpaid(request: Request, username: str = Form(...)):
 def add_prepaid_user(request: Request, username: str = Form(...), start_money: float = Form(...)):
     active_user_auth = request.session.get("user_authentik")
     active_user_db_id = request.session.get("user_db_id")
-    if not active_user_auth or ADMIN_GROUP not in active_user_auth["groups"]:
+    if not active_user_auth or FS_GROUP not in active_user_auth["groups"]:
         raise HTTPException(status_code=403, detail="Not allowed")
     if not active_user_db_id:
         raise HTTPException(status_code=404, detail="Current user not found")
@@ -234,6 +236,9 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
 
     if user_exists:
         raise HTTPException(status_code=400, detail="User already exists")
+    
+    if start_money < 0 or start_money > 100:
+        raise HTTPException(status_code=400, detail="Start money must be between 0 and 100")
 
     create_prepaid_user(username, active_user_db_id, int(start_money*100))
 
@@ -283,6 +288,10 @@ def add_money_prepaid_user(request: Request, username: str = Form(...), money: f
     prepaid_user_db_id = prepaid_user_dict["id"]
     if not prepaid_user_db_id:
         raise HTTPException(status_code=404, detail="Prepaid User not found")
+
+    if money < 0 or money > 100:
+        raise HTTPException(status_code=400, detail="Money must be between 0 and 100")
+
     curr_user_money = get_postpaid_user(curr_user_db_id)["money"]
     prepaid_user_money = prepaid_user_dict["money"]
 
