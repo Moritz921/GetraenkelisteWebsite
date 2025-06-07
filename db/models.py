@@ -1,27 +1,45 @@
 """
-This module defines database models and utility functions for managing users and drinks in a beverage tracking application using SQLAlchemy and FastAPI.
-Tables:
-    - users_postpaid: Stores postpaid user accounts.
-    - users_prepaid: Stores prepaid user accounts, linked to postpaid users.
-    - drinks: Records drink transactions for both postpaid and prepaid users.
+Database models and operations for a drink management system using SQLAlchemy and FastAPI.
+
+This module provides functions to manage postpaid and prepaid users, handle drink transactions,
+log money transfers, and generate statistics. It includes table creation, user CRUD operations,
+transaction logging, drink recording, and utility functions for drink statistics.
+
+Constants:
+    DRINK_COST (int): Cost of a drink in cents.
+    AVAILABLE_DRINKS (list): List of available drink types.
+
 Functions:
-    - create_postpaid_user(username: str) -> int:
-        Creates a new postpaid user with the specified username. Raises HTTPException if the user already exists or if a database error occurs. Returns the ID of the newly created user.
-    - get_postpaid_user(user_id: int) -> dict:
-        Retrieves a postpaid user's information by their user ID. Returns a dictionary with user details. Raises HTTPException if the user is not found.
-    - get_postpaid_user_by_username(username: str) -> dict:
-        Retrieves a postpaid user's information by their username. Returns a dictionary with user details. Raises HTTPException if the user is not found.
-    - set_postpaid_user_money(user_id: int, money: float) -> int:
-        Updates the 'money' balance for a postpaid user. Raises HTTPException if the user is not found. Returns the number of rows affected.
-    - drink_postpaid_user(user_id: int) -> int:
-        Deducts 100 units from the specified postpaid user's balance and records a drink entry. Raises HTTPException if the user is not found or if the drink entry could not be created. Returns the number of rows affected by the drink entry insertion.
+    _log_transaction(user_id, user_is_postpaid, ...): Log a user's money transaction.
+    create_postpaid_user(username): Create a new postpaid user.
+    get_postpaid_user(user_id): Retrieve a postpaid user's info by ID.
+    get_postpaid_user_by_username(username): Retrieve a postpaid user by username.
+    set_postpaid_user_money(user_id, money): Set a postpaid user's balance.
+    drink_postpaid_user(user_id, drink_type): Deduct drink cost and record a drink for postpaid user
+    toggle_activate_postpaid_user(user_id): Toggle activation status of a postpaid user.
+    payup_postpaid_user(current_user_id, payup_user_id, money_cent): Transfer money btw. post users.
+    get_prepaid_user(user_id): Retrieve a prepaid user's info by ID.
+    get_prepaid_user_by_username(username): Retrieve a prepaid user by username.
+    create_prepaid_user(prepaid_username, postpaid_user_id, start_money): Create a new prepaid user.
+    drink_prepaid_user(user_db_id): Process a prepaid drink transaction.
+    toggle_activate_prepaid_user(user_id): Toggle activation status of a prepaid user.
+    set_prepaid_user_money(user_id, money, postpaid_user_id): Set prepaid user's balance and link.
+    del_user_prepaid(user_id): Delete a prepaid user.
+    get_last_drink(user_id, user_is_postpaid, max_since_seconds): Get last drink within time window.
+    revert_last_drink(user_id, user_is_postpaid, drink_id, drink_cost): Revert a drink and refund.
+    update_drink_type(user_id, user_is_postpaid, drink_id, drink_type): Update drink type for drink.
+    get_most_used_drinks(user_id, user_is_postpaid, limit): Get most used drinks for a user.
+    get_stats_drink_types(): Get statistics of drink types.
+
+    HTTPException: For database errors, not found, or forbidden actions.
 """
+import os
 import secrets
 import datetime
-from sqlalchemy import create_engine, text
+import random
+from sqlalchemy import create_engine, text, select
 from fastapi import HTTPException
 
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,6 +49,7 @@ DATABASE_URL = "sqlite:///" + str(DATABASE_FILE)
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 DRINK_COST = 100  # cent
+AVAILABLE_DRINKS = ["Paulaner Spezi", "Mio Mate", "Club Mate", "Eistee Pfirsisch"]
 
 with engine.connect() as conn:
     # Create a table for postpaid users
@@ -100,22 +119,30 @@ def _log_transaction(
         description = None
     ):
     """
-        Logs a transaction for a user, recording changes in their account balance.
-        Depending on whether the user is postpaid or prepaid, retrieves the previous balance if not provided,
-        calculates the new balance and delta if necessary, and inserts a transaction record into the database.
-        Args:
-            user_id (int): The ID of the user for whom the transaction is being logged.
-            user_is_postpaid (bool): True if the user is postpaid, False if prepaid.
-            previous_money_cent (Optional[int], default=None): The user's previous balance in cents. If None, it is fetched from the database.
-            new_money_cent (Optional[int], default=None): The user's new balance in cents. If None, it is calculated using delta_money_cent.
-            delta_money_cent (Optional[int], default=None): The change in balance in cents. If None, it is calculated using new_money_cent.
-            description (Optional[str], default=None): A description of the transaction.
-        Raises:
-            HTTPException: If the user is not found, if both new_money_cent and delta_money_cent are missing,
-                           or if the transaction could not be logged.
-        Returns:
-            int: The ID of the newly created transaction record.
-        """
+    Logs a transaction for a user, recording changes in their account balance.
+
+    Depending on whether the user is postpaid or prepaid, retrieves the previous balance if not
+    provided, calculates the new balance and delta if necessary, and inserts a transaction record
+    into the database.
+
+    Args:
+        user_id (int): The ID of the user for whom the transaction is being logged.
+        user_is_postpaid (bool): True if the user is postpaid, False if prepaid.
+        previous_money_cent (Optional[int], default=None): The user's previous balance in cents.
+            If None, it is fetched from the database.
+        new_money_cent (Optional[int], default=None): The user's new balance in cents. If None,
+            it is calculated using delta_money_cent.
+        delta_money_cent (Optional[int], default=None): The change in balance in cents. If None,
+            it is calculated using new_money_cent.
+        description (Optional[str], default=None): A description of the transaction.
+
+    Raises:
+        HTTPException: If the user is not found, if both new_money_cent and delta_money_cent are
+            missing, or if the transaction could not be logged.
+
+    Returns:
+        int: The ID of the newly created transaction record.
+    """
     if previous_money_cent is None:
         if user_is_postpaid:
             t_get_prev_money = text("SELECT money FROM users_postpaid WHERE id = :id")
@@ -128,7 +155,13 @@ def _log_transaction(
             else:
                 raise HTTPException(status_code=404, detail="User not found")
     if new_money_cent is None and delta_money_cent is None:
-        raise HTTPException(status_code=400, detail="Either new_money or delta_money must be provided, not both")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Either new_money or delta_money "
+                "must be provided, not both"
+            )
+        )
     if new_money_cent is None and delta_money_cent is not None:
         new_money_cent = previous_money_cent + delta_money_cent
     elif delta_money_cent is None and new_money_cent is not None:
@@ -246,8 +279,12 @@ def set_postpaid_user_money(user_id: int, money: float):
         int: The number of rows affected by the update operation.
     """
 
-    print(f"set_postpaid_user_money: {user_id}, {money}")
-    _log_transaction(user_id, user_is_postpaid=True, new_money_cent=money, description="Set money manually via Admin UI")
+    _log_transaction(
+        user_id,
+        user_is_postpaid=True,
+        new_money_cent=money,
+        description="Set money manually via Admin UI"
+    )
     t = text("UPDATE users_postpaid SET money = :money WHERE id = :id")
     with engine.connect() as connection:
         result = connection.execute(t, {"id": user_id, "money": money})
@@ -300,6 +337,15 @@ def drink_postpaid_user(user_id: int, drink_type: str = ""):
     return result.rowcount
 
 def toggle_activate_postpaid_user(user_id: int):
+    """
+    Toggles the 'activated' status of a postpaid user in the database.
+    Args:
+        user_id (int): The ID of the user whose activation status should be toggled.
+    Returns:
+        int: The number of rows affected by the update operation.
+    Raises:
+        HTTPException: If no user with the given ID is found (404 error).
+    """
     prev_activated = get_postpaid_user(user_id)["activated"]
     t = text("UPDATE users_postpaid SET activated = :activated WHERE id = :id")
     with engine.connect() as connection:
@@ -309,8 +355,71 @@ def toggle_activate_postpaid_user(user_id: int):
         connection.commit()
     return result.rowcount
 
+def payup_postpaid_user(current_user_id: int, payup_user_id: int, money_cent: int):
+    """
+    Transfers a specified amount of money (in cents) from one postpaid user to another.
+    Args:
+        current_user_id (int): ID of the user paying the money.
+        payup_user_id (int): ID of the user receiving the money.
+        money_cent (int): Amount of money to transfer, in cents.
+    Raises:
+        HTTPException: If either user is not activated or not found in the database.
+    """
+    current_user = get_postpaid_user(current_user_id)
+    if not current_user["activated"]:
+        raise HTTPException(status_code=403, detail="Current user not activated")
+    payup_user = get_postpaid_user(payup_user_id)
+    if not payup_user["activated"]:
+        raise HTTPException(status_code=403, detail="Payup user not activated")
+
+    # subtract money from current user
+    t = text("UPDATE users_postpaid SET money = money - :money WHERE id = :id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"id": current_user_id, "money": money_cent})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Current user not found")
+        connection.commit()
+    _log_transaction(
+        user_id=current_user_id,
+        user_is_postpaid=True,
+        previous_money_cent=current_user["money"],
+        delta_money_cent=-money_cent,
+        description=f"Payup to user {payup_user_id}"
+    )
+
+    # add money to payup user
+    t = text("UPDATE users_postpaid SET money = money + :money WHERE id = :id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"id": payup_user_id, "money": money_cent})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Payup user not found")
+        connection.commit()
+    _log_transaction(
+        user_id=payup_user_id,
+        user_is_postpaid=True,
+        previous_money_cent=payup_user["money"],
+        new_money_cent=payup_user["money"] + money_cent,
+        delta_money_cent=money_cent,
+        description=f"Received payup from user {current_user_id}"
+    )
 
 def get_prepaid_user(user_id: int):
+    """
+    Retrieve a prepaid user from the database by user ID.
+    Args:
+        user_id (int): The ID of the prepaid user to retrieve.
+    Returns:
+        dict: A dictionary containing the user's information with keys:
+            - "id": User's ID
+            - "username": User's username
+            - "user_key": User's unique key
+            - "postpaid_user_id": Linked postpaid user ID (if any)
+            - "money": User's prepaid balance
+            - "activated": Activation status
+            - "last_drink": Timestamp of the user's last drink
+    Raises:
+        HTTPException: If no user with the given ID is found (status code 404).
+    """
     t = text("SELECT id, username, user_key, postpaid_user_id, money, activated, last_drink FROM users_prepaid WHERE id = :id")
     user_db = {}
     with engine.connect() as connection:
@@ -329,15 +438,14 @@ def get_prepaid_user(user_id: int):
 
 def get_prepaid_user_by_username(username: str):
     """
-    Retrieve a prepaid user from the database by their username.
+    Retrieve a prepaid user by username.
     Args:
-        username (str): The username of the user to retrieve.
+        username (str): The username to look up.
     Returns:
-        dict: A dictionary containing the user's id, username, money, activated status, and last_drink timestamp.
+        dict: User info (id, username, user_key, postpaid_user_id, money, activated, last_drink).
     Raises:
-        HTTPException: If no user with the given username is found, raises a 404 HTTPException.
+        HTTPException: If user not found (404).
     """
-
     t = text("SELECT id, username, user_key, postpaid_user_id, money, activated, last_drink FROM users_prepaid WHERE username = :username")
     user_db = {}
     with engine.connect() as connection:
@@ -355,6 +463,17 @@ def get_prepaid_user_by_username(username: str):
     return user_db
 
 def create_prepaid_user(prepaid_username: str, postpaid_user_id: int, start_money: int = 0):
+    """
+    Create a new prepaid user in users_prepaid.
+    Args:
+        prepaid_username (str): Username for the new prepaid user.
+        postpaid_user_id (int): Associated postpaid user ID.
+        start_money (int, optional): Initial money for the prepaid user. Defaults to 0.
+    Raises:
+        HTTPException: If username exists (400) or user creation fails (500).
+    Returns:
+        int: ID of the new prepaid user.
+    """
     prepaid_key = secrets.token_urlsafe(6)
     t = text("INSERT INTO users_prepaid (username, user_key, postpaid_user_id, money) VALUES (:username, :user_key, :postpaid_user_id, :start_money)")
     with engine.connect() as connection:
@@ -379,6 +498,24 @@ def create_prepaid_user(prepaid_username: str, postpaid_user_id: int, start_mone
     return result.lastrowid
 
 def drink_prepaid_user(user_db_id: int):
+    """
+    Processes a prepaid drink transaction for a user.
+    This function performs the following steps:
+    1. Retrieves the prepaid user's information from the database.
+    2. Checks if the user is activated; raises HTTP 403 if not.
+    3. Checks if the user has enough money for a drink; raises HTTP 403 if not.
+    4. Logs the transaction.
+    5. Deducts the drink cost from the user's balance and updates the last drink timestamp.
+    6. Inserts a new entry into the drinks table for the user.
+    7. Commits all changes to the database.
+    Args:
+        user_db_id (int): The database ID of the prepaid user.
+    Returns:
+        int: The number of rows affected by the drink entry insertion.
+    Raises:
+        HTTPException: If the user is not activated (403), does not have enough money (403),
+                       is not found (404), or if the drink entry could not be created (500).
+    """
     user_dict = get_prepaid_user(user_db_id)
     if not user_dict["activated"]:
         raise HTTPException(status_code=403, detail="User not activated")
@@ -386,6 +523,7 @@ def drink_prepaid_user(user_db_id: int):
     prev_money = user_dict["money"]
     if prev_money < DRINK_COST:
         raise HTTPException(status_code=403, detail="Not enough money")
+
     _log_transaction(
         user_id=user_db_id,
         user_is_postpaid=False,
@@ -409,6 +547,15 @@ def drink_prepaid_user(user_db_id: int):
     return result.rowcount
 
 def toggle_activate_prepaid_user(user_id: int):
+    """
+    Toggles the 'activated' status of a prepaid user in the database.
+    Args:
+        user_id (int): The ID of the user whose activation status is to be toggled.
+    Returns:
+        int: The number of rows affected by the update operation.
+    Raises:
+        HTTPException: If no user with the given ID is found (404 error).
+    """
     prev_activated = get_prepaid_user(user_id)["activated"]
     t = text("UPDATE users_prepaid SET activated = :activated WHERE id = :id")
     with engine.connect() as connection:
@@ -419,6 +566,17 @@ def toggle_activate_prepaid_user(user_id: int):
     return result.rowcount
 
 def set_prepaid_user_money(user_id: int, money: int, postpaid_user_id: int):
+    """
+    Updates the prepaid user's money and associated postpaid user ID in the database.
+    Args:
+        user_id (int): The ID of the prepaid user whose information is to be updated.
+        money (int): The new amount of money (in cents) to set for the user.
+        postpaid_user_id (int): The ID of the associated postpaid user.
+    Raises:
+        HTTPException: If the user with the given user_id is not found in the database.
+    Returns:
+        int: The number of rows affected by the last update operation.
+    """
     t1 = text("UPDATE users_prepaid SET money = :money WHERE id = :id")
     t2 = text("UPDATE users_prepaid SET postpaid_user_id = :postpaid_user_id WHERE id = :id")
     _log_transaction(
@@ -438,6 +596,15 @@ def set_prepaid_user_money(user_id: int, money: int, postpaid_user_id: int):
     return result.rowcount
 
 def del_user_prepaid(user_id: int):
+    """
+    Deletes a user's prepaid entry from the 'users_prepaid' table by user ID.
+    Args:
+        user_id (int): The ID of the user whose prepaid entry should be deleted.
+    Raises:
+        HTTPException: If no entry with the given user_id is found (404 Not Found).
+    Returns:
+        int: The number of rows deleted (should be 1 if successful).
+    """
     t = text("DELETE FROM users_prepaid WHERE id = :id")
     with engine.connect() as connection:
         result = connection.execute(t, {"id": user_id})
@@ -447,6 +614,18 @@ def del_user_prepaid(user_id: int):
     return result.rowcount
 
 def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int = 60):
+    """
+    Retrieve the most recent drink entry for a user within a specified time window.
+
+    Args:
+        user_id (int): The ID of the user whose last drink is to be retrieved.
+        user_is_postpaid (bool): True if the user is postpaid, False if prepaid.
+        max_since_seconds (int, optional): Max seconds since last drink. Defaults to 60.
+
+    Returns:
+        dict or None: Dict with 'id', 'timestamp', 'drink_type' if found within time window,
+        else None.
+    """
     if user_is_postpaid:
         t = text("SELECT id, timestamp, drink_type FROM drinks WHERE postpaid_user_id = :user_id ORDER BY timestamp DESC LIMIT 1")
     else:
@@ -466,10 +645,24 @@ def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int 
             last_drink_time = last_drink_time.replace(tzinfo=datetime.timezone.utc)
         if (now - last_drink_time).total_seconds() > max_since_seconds:
             return None
-        print(f"get_last_drink: user_id={user_id}, user_is_postpaid={user_is_postpaid}, drink_id={drink_id}, timestamp={timestamp}, drink_type={drink_type}")
-        return {"id": drink_id, "timestamp": timestamp, "drink_type": drink_type}
-    
+        drink_obj = {"id": drink_id, "timestamp": timestamp, "drink_type": drink_type}
+        return drink_obj
+
 def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink_cost: int = DRINK_COST):
+    """
+    Reverts the last drink purchase for a user and refunds the drink cost.
+    Args:
+        user_id (int): The ID of the user whose drink is to be reverted.
+        user_is_postpaid (bool): True if the user is postpaid, False if prepaid.
+        drink_id (int): The ID of the drink to revert.
+        drink_cost (int, optional): The cost of the drink in cents. Defaults to DRINK_COST.
+    Raises:
+        HTTPException: If the drink or user is not found in the database.
+    Side Effects:
+        - Deletes the drink record from the database.
+        - Refunds the drink cost to the user's balance.
+        - Logs the transaction.
+    """
     if user_is_postpaid:
         del_t = text("DELETE FROM drinks WHERE postpaid_user_id = :user_id AND id = :drink_id")
         update_t = text("UPDATE users_postpaid SET money = money + :drink_cost WHERE id = :user_id")
@@ -481,7 +674,6 @@ def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink
 
     with engine.connect() as connection:
         # Check if the drink exists
-        print(f"revert_last_drink: user_id={user_id}, user_is_postpaid={user_is_postpaid}, drink_id={drink_id}, drink_cost={drink_cost}")
         drink_exists = connection.execute(del_t, {"user_id": user_id, "drink_id": drink_id}).rowcount > 0
         if not drink_exists:
             raise HTTPException(status_code=404, detail="Drink not found")
@@ -490,11 +682,11 @@ def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink
         prev_money = connection.execute(money_t, {"user_id": user_id}).fetchone()
         if not prev_money:
             raise HTTPException(status_code=404, detail="User not found")
-        
+
         new_money = prev_money[0] + drink_cost
         connection.execute(update_t, {"user_id": user_id, "drink_cost": drink_cost})
         connection.commit()
-        
+
         _log_transaction(
             user_id=user_id,
             user_is_postpaid=user_is_postpaid,
@@ -505,6 +697,20 @@ def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink
         )
 
 def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type: str):
+    """
+    Updates the drink type for a specific drink associated with a user.
+    Depending on whether the user is postpaid or prepaid, the function updates the `drink_type`
+    field in the `drinks` table for the drink with the given `drink_id` and user association.
+    Args:
+        user_id (int): The ID of the user whose drink is being updated.
+        user_is_postpaid (bool): Indicates if the user is postpaid (True) or prepaid (False).
+        drink_id: The ID of the drink to update.
+        drink_type (str): The new type to set for the drink.
+    Raises:
+        HTTPException: If no drink is found with the given criteria (404 Not Found).
+    Returns:
+        int: The number of rows affected by the update.
+    """
     if user_is_postpaid:
         t = text("UPDATE drinks SET drink_type = :drink_type WHERE postpaid_user_id = :user_id AND id = :drink_id")
     else:
@@ -516,3 +722,51 @@ def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type
             raise HTTPException(status_code=404, detail="Drink not found")
         connection.commit()
     return result.rowcount
+
+def get_most_used_drinks(user_id: int, user_is_postpaid: bool, limit: int = 4):
+    """
+    Return up to `limit` most used drinks for a user, filling with random drinks if needed.
+    Args:
+        user_id (int): User's ID.
+        user_is_postpaid (bool): True if postpaid, else prepaid.
+        limit (int): Max drinks to return.
+    Returns:
+        list[dict]: Each dict has 'drink_type' and 'count'.
+    """
+    if user_is_postpaid:
+        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE postpaid_user_id = :user_id AND drink_type IS NOT NULL AND drink_type != 'Sonstiges' GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
+    else:
+        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE prepaid_user_id = :user_id AND drink_type IS NOT NULL AND drink_type != 'Sonstiges' GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
+
+    with engine.connect() as connection:
+        result = connection.execute(t, {"user_id": user_id, "limit": limit}).fetchall()
+        if not result:
+            return []
+        drinks = [{"drink_type": row[0], "count": row[1]} for row in result]
+
+    while len(drinks) < limit:
+        random_drink = random.choice(AVAILABLE_DRINKS)
+        if any(drink["drink_type"] == random_drink for drink in drinks):
+            continue
+        drinks.append({"drink_type": random_drink, "count": 0})
+
+    return drinks
+
+def get_stats_drink_types():
+    """
+    Retrieves statistics on drink types from the database.
+    Executes a SQL query to count the occurrences of each non-null drink type in the 'drinks' table,
+    grouping and ordering the results by the count in descending order.
+    Returns:
+        list[dict]: A list of dictionaries, each containing 'drink_type' (str) and 'count' (int).
+                    Returns an empty list if no results are found.
+    """
+    t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE drink_type IS NOT NULL GROUP BY drink_type ORDER BY count DESC")
+
+    with engine.connect() as connection:
+        result = connection.execute(t).fetchall()
+        if not result:
+            return []
+        drinks = [{"drink_type": row[0], "count": row[1]} for row in result]
+
+    return drinks
