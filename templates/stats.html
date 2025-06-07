@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Statistik{% endblock %}
+{% block content %}
+
+<!-- Chart.js einbinden -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<h3>Verteilung der Getränkesorten</h3>
+<canvas id="pieChart" width="400" height="200"></canvas>
+
+<script>
+// Pie Chart für Getränketypen
+const pieChartLabels = {{ stats_drink_types | map(attribute='drink_type') | list | tojson }};
+const pieChartData = {{ stats_drink_types | map(attribute='count') | list | tojson }};
+const pieCtx = document.getElementById('pieChart').getContext('2d');
+new Chart(pieCtx, {
+    type: 'doughnut',
+    data: {
+        labels: pieChartLabels,
+        datasets: [{
+            data: pieChartData,
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'top' },
+            title: {
+                display: true,
+                text: 'Verteilung der Getränkesorten'
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

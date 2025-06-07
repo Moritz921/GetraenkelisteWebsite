@@ -1,36 +1,19 @@
-import random
+import os
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 import uvicorn
 from sqlalchemy import text
 
 from db.models import engine
-from db.models import get_postpaid_user
-from db.models import get_postpaid_user_by_username
-from db.models import set_postpaid_user_money
-from db.models import drink_postpaid_user
-from db.models import toggle_activate_postpaid_user
-from db.models import get_prepaid_user
-from db.models import get_prepaid_user_by_username
-from db.models import create_prepaid_user
-from db.models import drink_prepaid_user
-from db.models import toggle_activate_prepaid_user
-from db.models import set_prepaid_user_money
-from db.models import del_user_prepaid
-from db.models import get_last_drink
-from db.models import revert_last_drink
-from db.models import update_drink_type
-from db.models import get_most_used_drinks
+import db.models
 
 from auth import oidc
-import os
-from dotenv import load_dotenv
 
 
 
@@ -50,7 +33,6 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    
     # Check if user is logged in and has a valid session
     user_db_id = request.session.get("user_db_id")
     user_authentik = request.session.get("user_authentik")
@@ -72,7 +54,7 @@ def home(request: Request):
             if result:
                 users = []
                 for row in result:
-                    user_db = get_postpaid_user(row[0])
+                    user_db = db.models.get_postpaid_user(row[0])
                     if user_db:
                         users.append(user_db)
 
@@ -85,7 +67,7 @@ def home(request: Request):
             if result:
                 db_users_prepaid = []
                 for row in result:
-                    prepaid_user = get_prepaid_user(row[0])
+                    prepaid_user = db.models.get_prepaid_user(row[0])
                     if prepaid_user:
                         db_users_prepaid.append(prepaid_user)
             # additionally load all prepaid users from the current user
@@ -94,22 +76,22 @@ def home(request: Request):
             if result:
                 prepaid_users_from_curr_user = []
                 for row in result:
-                    prepaid_user = get_prepaid_user(row[0])
+                    prepaid_user = db.models.get_prepaid_user(row[0])
                     if prepaid_user:
                         prepaid_users_from_curr_user.append(prepaid_user)
 
     # load current user from database
     user_is_postpaid = get_is_postpaid(user_authentik)
     if user_is_postpaid:
-        db_user = get_postpaid_user(user_db_id)
+        db_user = db.models.get_postpaid_user(user_db_id)
     else:
-        db_user = get_prepaid_user(user_db_id)
+        db_user = db.models.get_prepaid_user(user_db_id)
 
     # get last drink for current user, if not less than 60 seconds ago
-    last_drink = get_last_drink(user_db_id, user_is_postpaid, 60)
+    last_drink = db.models.get_last_drink(user_db_id, user_is_postpaid, 60)
 
-    most_used_drinks = get_most_used_drinks(user_db_id, user_is_postpaid, 3)
-    most_used_drinks.append({"drink_type": "Sonstiges", "count": 0})  # Ensure "Sonstiges" is always included
+    most_used_drinks = db.models.get_most_used_drinks(user_db_id, user_is_postpaid, 3)
+    most_used_drinks.append({"drink_type": "Sonstiges", "count": 0})  # ensure "Sonstiges" is in
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -132,7 +114,6 @@ def login_form(request: Request):
     Returns:
         TemplateResponse: The rendered login.html template with the request context.
     """
-    
     return templates.TemplateResponse("login.html", {"request": request})
 
 @app.post("/set_money_postpaid")
@@ -155,10 +136,10 @@ def set_money_postpaid(request: Request, username = Form(...), money: float = Fo
     if not user_authentik or ADMIN_GROUP not in user_authentik["groups"]:
         raise HTTPException(status_code=403, detail="Nicht erlaubt")
 
-    user = get_postpaid_user_by_username(username)
+    user = db.models.get_postpaid_user_by_username(username)
     requested_user_id = user["id"]
 
-    set_postpaid_user_money(requested_user_id, money*100)
+    db.models.set_postpaid_user_money(requested_user_id, money*100)
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/drink")
@@ -186,48 +167,93 @@ async def drink(request: Request):
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
 
-    drink_postpaid_user(user_db_id)
+    db.models.drink_postpaid_user(user_db_id)
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/payup")
 def payup(request: Request, username: str = Form(...), money: float = Form(...)):
+    """
+    Handles the payment process for a postpaid user.
+    This endpoint allows an authenticated admin user to record a payment for a specified user.
+    It validates the admin's permissions, checks the validity of the username and payment amount,
+    and updates the user's postpaid balance accordingly.
+    Args:
+        request (Request): The incoming HTTP request, containing session data.
+        username (str): The username of the user whose balance is to be updated (form data).
+        money (float): The amount of money to be paid (form data, must be between 0 and 1000).
+    Raises:
+        HTTPException: If the user is not authenticated as an admin (403).
+        HTTPException: If the specified user is not found (404).
+        HTTPException: If the payment amount is invalid (400).
+        HTTPException: If the current user is not found in the session (404).
+    Returns:
+        RedirectResponse: Redirects to the home page ("/") with a 303 status code upon success.
+    """
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    user_db_id = get_postpaid_user_by_username(username)["id"]
+    user_db_id = db.models.get_postpaid_user_by_username(username)["id"]
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
     if money < 0 or money > 1000:
         raise HTTPException(status_code=400, detail="Money must be between 0 and 1000")
 
-    curr_user_money = get_postpaid_user(user_db_id)["money"]
-    set_postpaid_user_money(user_db_id, curr_user_money + money*100)
-
     current_user_db_id = request.session.get("user_db_id")
     if not current_user_db_id:
         raise HTTPException(status_code=404, detail="Current user not found")
-    current_user_money = get_postpaid_user(current_user_db_id)["money"]
-    set_postpaid_user_money(current_user_db_id, current_user_money - money*100)
+
+    db.models.payup_postpaid_user(current_user_db_id, user_db_id, int(money*100))
+
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/toggle_activated_user_postpaid")
 def toggle_activated_user_postpaid(request: Request, username: str = Form(...)):
+    """
+    Toggles the activation status of a postpaid user account.
+    Args:
+        request (Request): The incoming HTTP request, containing session information.
+        username (str): The username of the postpaid user to toggle, provided via form data.
+    Raises:
+        HTTPException: If the user is not authenticated as an admin (status code 403).
+        HTTPException: If the specified user is not found (status code 404).
+    Returns:
+        RedirectResponse: Redirects to the homepage ("/") with a 303 status code after toggling.
+    """
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    user_db_id = get_postpaid_user_by_username(username)["id"]
+    user_db_id = db.models.get_postpaid_user_by_username(username)["id"]
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
 
-    toggle_activate_postpaid_user(user_db_id)
+    db.models.toggle_activate_postpaid_user(user_db_id)
 
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/add_prepaid_user")
 def add_prepaid_user(request: Request, username: str = Form(...), start_money: float = Form(...)):
+    """
+    Handles the creation of a new prepaid user account.
+    This endpoint validates the current user's authentication and group membership,
+    checks for the existence of the username among prepaid and postpaid users,
+    validates the input parameters, creates the prepaid user, and deducts the starting
+    money from the current user's postpaid balance.
+    Args:
+        request (Request): The incoming HTTP request, containing session data.
+        username (str): The username for the new prepaid user (form field, required).
+        start_money (float): The initial balance for the new prepaid user (form field, required).
+    Raises:
+        HTTPException: 
+            - 403 if the current user is not authorized.
+            - 404 if the current user is not found in the session.
+            - 400 if the username is empty, already exists, or does not meet length requirements.
+            - 400 if the start_money is not between 0 and 100.
+    Returns:
+        RedirectResponse: Redirects to the homepage ("/") with status code 303 upon successful creation.
+    """
     active_user_auth = request.session.get("user_authentik")
     active_user_db_id = request.session.get("user_db_id")
     if not active_user_auth or FS_GROUP not in active_user_auth["groups"]:
@@ -239,9 +265,9 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
 
     user_exists = False
     try:
-        get_postpaid_user_by_username(username)
+        db.models.get_postpaid_user_by_username(username)
         user_exists = True
-        get_prepaid_user_by_username(username)
+        db.models.get_prepaid_user_by_username(username)
         user_exists = True
     except HTTPException:
         pass
@@ -254,15 +280,28 @@ def add_prepaid_user(request: Request, username: str = Form(...), start_money: f
     if len(username) < 3 or len(username) > 20:
         raise HTTPException(status_code=400, detail="Username must be between 3 and 20 characters")
 
-    create_prepaid_user(username, active_user_db_id, int(start_money*100))
+    db.models.create_prepaid_user(username, active_user_db_id, int(start_money*100))
 
-    prev_money = get_postpaid_user(active_user_db_id)["money"]
-    set_postpaid_user_money(active_user_db_id, prev_money - int(start_money*100))
+    prev_money = db.models.get_postpaid_user(active_user_db_id)["money"]
+    db.models.set_postpaid_user_money(active_user_db_id, prev_money - int(start_money*100))
 
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/drink_prepaid")
 def drink_prepaid(request: Request):
+    """
+    Handles a prepaid drink request for a user.
+    This function checks if the user is authenticated and has prepaid privileges.
+    If the user is not found in the session or does not have prepaid access, it raises an HTTPException.
+    If the user is valid and has prepaid access, it records the prepaid drink for the user in the database
+    and redirects to the home page.
+    Args:
+        request (Request): The incoming HTTP request containing session data.
+    Raises:
+        HTTPException: If the user is not found in the session or does not have prepaid privileges.
+    Returns:
+        RedirectResponse: Redirects the user to the home page with a 303 status code.
+    """
     user_db_id = request.session.get("user_db_id")
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
@@ -272,25 +311,52 @@ def drink_prepaid(request: Request):
     if not user_authentik["prepaid"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    drink_prepaid_user(user_db_id)
+    db.models.drink_prepaid_user(user_db_id)
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/toggle_activated_user_prepaid")
 def toggle_activated_user_prepaid(request: Request, username: str = Form(...)):
+    """
+    Toggle the activation status of a prepaid user account.
+    This endpoint is restricted to users who are members of the ADMIN_GROUP.
+    It retrieves the user by username, toggles their activation status, and redirects to the homepage.
+    Args:
+        request (Request): The incoming HTTP request, containing session data.
+        username (str): The username of the prepaid user to toggle, provided via form data.
+    Raises:
+        HTTPException: If the user is not authenticated as an admin (403).
+        HTTPException: If the specified user is not found (404).
+    Returns:
+        RedirectResponse: Redirects to the homepage with a 303 status code after toggling.
+    """
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    user_db_id = get_prepaid_user_by_username(username)["id"]
+    user_db_id = db.models.get_prepaid_user_by_username(username)["id"]
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
 
-    toggle_activate_prepaid_user(user_db_id)
+    db.models.toggle_activate_prepaid_user(user_db_id)
 
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/add_money_prepaid_user")
 def add_money_prepaid_user(request: Request, username: str = Form(...), money: float = Form(...)):
+    """
+    Handles the transfer of a specified amount of money from the currently logged-in postpaid user to a prepaid user.
+    Args:
+        request (Request): The incoming HTTP request containing session data.
+        username (str): The username of the prepaid user to whom money will be added (provided via form data).
+        money (float): The amount of money to transfer (provided via form data, must be between 0 and 100).
+    Raises:
+        HTTPException: 
+            - 403 if the current user is not authorized (not in the required group).
+            - 404 if the logged-in user or the prepaid user is not found.
+            - 400 if the money amount is not within the allowed range.
+    Returns:
+        RedirectResponse: Redirects the user to the homepage ("/") with a 303 status code after a successful transfer.
+    """
     curr_user_auth = request.session.get("user_authentik")
     if not curr_user_auth or FS_GROUP not in curr_user_auth["groups"]:
         raise HTTPException(status_code=403, detail="Not allowed")
@@ -298,7 +364,7 @@ def add_money_prepaid_user(request: Request, username: str = Form(...), money: f
     if not curr_user_db_id:
         raise HTTPException(status_code=404, detail="Logged In User not found")
 
-    prepaid_user_dict = get_prepaid_user_by_username(username)
+    prepaid_user_dict = db.models.get_prepaid_user_by_username(username)
     prepaid_user_db_id = prepaid_user_dict["id"]
     if not prepaid_user_db_id:
         raise HTTPException(status_code=404, detail="Prepaid User not found")
@@ -306,31 +372,55 @@ def add_money_prepaid_user(request: Request, username: str = Form(...), money: f
     if money < 0 or money > 100:
         raise HTTPException(status_code=400, detail="Money must be between 0 and 100")
 
-    curr_user_money = get_postpaid_user(curr_user_db_id)["money"]
+    curr_user_money = db.models.get_postpaid_user(curr_user_db_id)["money"]
     prepaid_user_money = prepaid_user_dict["money"]
 
-    set_postpaid_user_money(curr_user_db_id, curr_user_money - money*100)
-    set_prepaid_user_money(prepaid_user_db_id, prepaid_user_money + money*100, curr_user_db_id)
+    db.models.set_postpaid_user_money(curr_user_db_id, curr_user_money - money*100)
+    db.models.set_prepaid_user_money(prepaid_user_db_id, prepaid_user_money + money*100, curr_user_db_id)
 
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/del_prepaid_user")
 def delete_prepaid_user(request: Request, username: str = Form(...)):
+    """
+    Deletes a prepaid user from the system.
+    This endpoint allows an admin user to delete a prepaid user by their username.
+    It checks if the requester is part of the ADMIN_GROUP, retrieves the user to be deleted,
+    and removes them from the database. If the user is not found or the requester is not authorized,
+    an appropriate HTTPException is raised.
+    Args:
+        request (Request): The incoming HTTP request, containing session information.
+        username (str): The username of the prepaid user to delete, provided via form data.
+    Raises:
+        HTTPException: If the requester is not authorized (status code 403).
+        HTTPException: If the user to delete is not found (status code 404).
+    Returns:
+        RedirectResponse: Redirects to the homepage ("/") with status code 303 upon successful deletion.
+    """
     # check if user is in ADMIN_GROUP
     user_auth = request.session.get("user_authentik")
     if not user_auth or ADMIN_GROUP not in user_auth["groups"]:
         raise HTTPException(status_code=403, detail="Nicht erlaubt")
 
-    user_to_del = get_prepaid_user_by_username(username)
+    user_to_del = db.models.get_prepaid_user_by_username(username)
     if not user_to_del["id"]:
         raise HTTPException(status_code=404, detail="User not found")
 
-    del_user_prepaid(user_to_del["id"])
+    db.models.del_user_prepaid(user_to_del["id"])
 
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/del_last_drink")
 def del_last_drink(request: Request):
+    """
+    Handles the deletion (reversion) of the last drink entry for the currently authenticated user.
+    Args:
+        request (Request): The incoming HTTP request containing session data.
+    Raises:
+        HTTPException: If the user is not found in the session.
+    Returns:
+        RedirectResponse: Redirects to the homepage ("/") after attempting to revert the last drink.
+    """
     user_db_id = request.session.get("user_db_id")
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
@@ -338,18 +428,28 @@ def del_last_drink(request: Request):
     if not user_authentik:
         raise HTTPException(status_code=404, detail="User not found")
 
-    last_drink = get_last_drink(user_db_id, True, 60)
+    last_drink = db.models.get_last_drink(user_db_id, True, 60)
     if not last_drink:
         return RedirectResponse(url="/", status_code=303)
 
     user_is_postpaid = get_is_postpaid(user_authentik)
 
-    revert_last_drink(user_db_id, user_is_postpaid, last_drink["id"])
+    db.models.revert_last_drink(user_db_id, user_is_postpaid, last_drink["id"])
 
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/update_drink_post")
 def update_drink_post(request: Request, drink_type: str = Form(...)):
+    """
+    Handles a POST request to update the type of the user's last drink.
+    Args:
+        request (Request): The incoming HTTP request containing session data.
+        drink_type (str, optional): The new type of drink to set, provided via form data.
+    Raises:
+        HTTPException: If the user is not found in the session or if the drink type is empty.
+    Returns:
+        RedirectResponse: Redirects to the home page after updating the drink type, or if no last drink is found.
+    """
     user_db_id = request.session.get("user_db_id")
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
@@ -358,20 +458,53 @@ def update_drink_post(request: Request, drink_type: str = Form(...)):
     if not user_authentik:
         raise HTTPException(status_code=404, detail="User not found")
 
-    last_drink = get_last_drink(user_db_id, True, 60)
+    last_drink = db.models.get_last_drink(user_db_id, True, 60)
     if not last_drink:
         return RedirectResponse(url="/", status_code=303)
 
     if not drink_type:
         raise HTTPException(status_code=400, detail="Drink type is empty")
 
-    update_drink_type(user_db_id, get_is_postpaid(user_authentik), last_drink["id"], drink_type)
+    db.models.update_drink_type(user_db_id, get_is_postpaid(user_authentik), last_drink["id"], drink_type)
 
     return RedirectResponse(url="/", status_code=303)
 
+@app.get("/stats", response_class=HTMLResponse)
+def stats(request: Request):
+    """
+    Handles the statistics page request for authenticated admin users.
+    Args:
+        request (Request): The incoming HTTP request object containing session data.
+    Raises:
+        HTTPException: If the user is not authenticated as an admin (403).
+        HTTPException: If the user's database ID is not found in the session (404).
+    Returns:
+        TemplateResponse: Renders the "stats.html" template with user and drink type statistics.
+    """
+    user_authentik = request.session.get("user_authentik")
+    if not user_authentik or ADMIN_GROUP not in user_authentik["groups"]:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    user_db_id = request.session.get("user_db_id")
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User not found")
 
+    drink_types = db.models.get_stats_drink_types()
 
-def get_is_postpaid(user_authentik) -> bool:
+    return templates.TemplateResponse("stats.html", {
+        "request": request,
+        "user": user_authentik,
+        "user_db_id": user_db_id,
+        "stats_drink_types": drink_types,
+    })
+
+def get_is_postpaid(user_authentik: dict) -> bool:
+    """
+    Determine if a user is postpaid based on their authentication information.
+    Args:
+        user_authentik (dict): A dictionary containing user authentication data, expected to have a 'prepaid' key.
+    Returns:
+        bool: True if the user is postpaid, False if the user is prepaid. If the 'prepaid' key is missing, defaults to True (postpaid).
+    """
     try:
         if user_authentik["prepaid"]:
             user_is_postpaid = False
