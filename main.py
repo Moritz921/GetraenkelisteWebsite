@@ -497,6 +497,7 @@ def stats(request: Request):
         "stats_drink_types": drink_types,
     })
 
+
 def get_is_postpaid(user_authentik: dict) -> bool:
     """
     Determine if a user is postpaid based on their authentication information.
