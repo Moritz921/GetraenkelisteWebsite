@@ -18,6 +18,7 @@ Functions:
 """
 import secrets
 import datetime
+import random
 from sqlalchemy import create_engine, text
 from fastapi import HTTPException
 
@@ -31,6 +32,7 @@ DATABASE_URL = "sqlite:///" + str(DATABASE_FILE)
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 DRINK_COST = 100  # cent
+AVAILABLE_DRINKS = ["Paulaner Spezi", "Mio Mate", "Club Mate", "Eistee Pfirsisch"]
 
 with engine.connect() as conn:
     # Create a table for postpaid users
@@ -465,7 +467,8 @@ def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int 
             last_drink_time = last_drink_time.replace(tzinfo=datetime.timezone.utc)
         if (now - last_drink_time).total_seconds() > max_since_seconds:
             return None
-        return {"id": drink_id, "timestamp": timestamp, "drink_type": drink_type}
+        drink_obj = {"id": drink_id, "timestamp": timestamp, "drink_type": drink_type}
+        return drink_obj
     
 def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink_cost: int = DRINK_COST):
     if user_is_postpaid:
@@ -513,3 +516,23 @@ def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type
             raise HTTPException(status_code=404, detail="Drink not found")
         connection.commit()
     return result.rowcount
+
+def get_most_used_drinks(user_id: int, user_is_postpaid: bool, limit: int = 4):
+    if user_is_postpaid:
+        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE postpaid_user_id = :user_id AND drink_type IS NOT NULL AND drink_type != 'Sonstiges' GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
+    else:
+        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE prepaid_user_id = :user_id AND drink_type IS NOT NULL AND drink_type != 'Sonstiges' GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
+
+    with engine.connect() as connection:
+        result = connection.execute(t, {"user_id": user_id, "limit": limit}).fetchall()
+        if not result:
+            return []
+        drinks = [{"drink_type": row[0], "count": row[1]} for row in result]
+
+    while len(drinks) < limit:
+        random_drink = random.choice(AVAILABLE_DRINKS)
+        if any(drink["drink_type"] == random_drink for drink in drinks):
+            continue
+        drinks.append({"drink_type": random_drink, "count": 0})
+
+    return drinks

@@ -78,11 +78,14 @@ content %}
         <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 1em; margin-top: 1em;">
             {% for drink in avail_drink_types %}
                 <form method="post" action="/update_drink_post" style="display: inline-block;">
-                    <input type="hidden" name="drink_type" value="{{ drink }}">
+                    <input type="hidden" name="drink_type" value="{{ drink.drink_type }}">
                     <button type="submit"
-                        style="display: flex; flex-direction: column; align-items: center; background-color: #00618F; color: #fff; border: none; border-radius: 8px; padding: 0.7em 1.2em; cursor: pointer; min-width: 120px;">
-                        <img src="/static/drinks/{{ drink|lower|replace(' ', '_') }}.png" alt="{{ drink }}" style="width:48px; height:48px; object-fit:contain; margin-bottom:0.5em;">
-                        <span>{{ drink }}</span>
+                        style="display: flex; flex-direction: column; align-items: center; background-color: var(--goetheblau); color: #fff; border: none; border-radius: 8px; padding: 0.7em 1.2em; cursor: pointer; min-width: 120px;">
+                        <img src="/static/drinks/{{ drink.drink_type|lower|replace(' ', '_') }}.png" alt="{{ drink.drink_type }}" style="width:48px; height:48px; object-fit:contain; margin-bottom:0.5em;">
+                        <span>{{ drink.drink_type }}</span>
+                        {% if drink.count > 0 %}
+                            <span style="font-size:0.9em; color:#eee;">x{{ drink.count }}</span>
+                        {% endif %}
                     </button>
                 </form>
             {% endfor %}
@@ -93,13 +96,24 @@ content %}
         <strong>Letztes Getränk:</strong>
         <div style="margin: 0.5em 0;">
             Typ: {{ last_drink.drink_type }}<br>
-            Zeit: {{ last_drink.timestamp }}<br>
+            Zeit: <span class="local-timestamp" data-utc="{{ last_drink.timestamp }}">{{ last_drink.timestamp }}</span><br>
+            <script>
+                document.addEventListener("DOMContentLoaded", function() {
+                    document.querySelectorAll('.local-timestamp').forEach(function(el) {
+                        const utc = el.getAttribute('data-utc');
+                        if (utc) {
+                            const date = new Date(utc);
+                            el.textContent = date.toLocaleString();
+                        }
+                    });
+                });
+            </script>
             ID: {{ last_drink.id }}
         </div>
         <form method="post" action="/del_last_drink" style="display: inline;">
             <input type="hidden" name="drink_id" value="{{ last_drink.drink_id }}">
             <button type="submit"
-                style="background-color: #c0392b; color: #fff; border: none; border-radius: 6px; padding: 0.5em 1em; cursor: pointer;">
+                style="background-color: var(--emorot); color: #fff; border: none; border-radius: 6px; padding: 0.5em 1em; cursor: pointer;">
                 Getränk löschen
             </button>
         </form>

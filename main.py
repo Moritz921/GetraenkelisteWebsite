@@ -26,6 +26,7 @@ from db.models import del_user_prepaid
 from db.models import get_last_drink
 from db.models import revert_last_drink
 from db.models import update_drink_type
+from db.models import get_most_used_drinks
 
 from auth import oidc
 import os
@@ -107,6 +108,9 @@ def home(request: Request):
     # get last drink for current user, if not less than 60 seconds ago
     last_drink = get_last_drink(user_db_id, user_is_postpaid, 60)
 
+    most_used_drinks = get_most_used_drinks(user_db_id, user_is_postpaid, 3)
+    most_used_drinks.append({"drink_type": "Sonstiges", "count": 0})  # Ensure "Sonstiges" is always included
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "user": user_authentik,
@@ -116,7 +120,7 @@ def home(request: Request):
         "db_users_prepaid": db_users_prepaid,
         "prepaid_users_from_curr_user": prepaid_users_from_curr_user,
         "last_drink": last_drink,
-        "avail_drink_types": ["Paulaner Spezi", "Mio Mate", "Club Mate", "Sonstiges"],
+        "avail_drink_types": most_used_drinks,
     })
 
 @app.get("/login", response_class=HTMLResponse)
