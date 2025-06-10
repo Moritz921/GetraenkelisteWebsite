@@ -81,7 +81,7 @@ content %}
                     <input type="hidden" name="drink_type" value="{{ drink.drink_type }}">
                     <button type="submit"
                         style="display: flex; flex-direction: column; align-items: center; background-color: var(--goetheblau); color: #fff; border: none; border-radius: 8px; padding: 0.7em 1.2em; cursor: pointer; min-width: 120px;">
-                        <img src="/static/drinks/{{ drink.drink_type|lower|replace(' ', '_') }}.png" alt="{{ drink.drink_type }}" style="width:48px; height:48px; object-fit:contain; margin-bottom:0.5em;">
+                        <img src="/static/drinks/{{ drink.icon }}" alt="{{ drink.drink_type }}" style="width:48px; height:48px; object-fit:contain; margin-bottom:0.5em;">
                         <span>{{ drink.drink_type }}</span>
                         {% if drink.count > 0 %}
                             <span style="font-size:0.9em; color:#eee;">x{{ drink.count }}</span>
@@ -155,14 +155,8 @@ content %}
     ID {{ db_user.postpaid_user_id }}
 </div>
 {% endif %}
-<div id="popup" style="display:none; position:fixed; top:25%; left:50%; transform:translate(-50%, -25%);
-     background:#fff; border:2px solid #00618F; border-radius:12px; padding:1em; box-shadow:0 0 20px rgba(0,0,0,0.3); z-index:1000; max-width:90%; text-align:center;">
-    <h2>Wähle dein Getränk oder warte bitte</h2>
-    <div id="popup-getraenke" style="margin: 1em 0;"></div>
-    <div id="progress-container" style="height:10px; background:#ccc; border-radius:5px; overflow:hidden;">
-        <div id="progress-bar" style="height:10px; background:#00618F; width:100%; transition: width 0.1s linear;"></div>
-    </div>
-</div>
+
+
 
 {% if user %}
     {% if 'Getraenkeliste Postpaid' in user.groups %}
@@ -327,6 +321,53 @@ content %}
                 <td colspan="7" style="text-align: center">No users in prepaid database</td>
             </tr>
         {% endif %}
+
+        <h3>Getränkesorten</h3>
+        <p>Verfügbare Getränkesorten:</p>
+        {% if drink_types %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="padding: 0.5em 1em">ID</th>
+                        <th style="padding: 0.5em 1em">Name</th>
+                        <th style="padding: 0.5em 1em">Icon</th>
+                        <th style="padding: 0.5em 1em">Quantity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for drink_type in drink_types %}
+                        <td style="padding: 0.5em 1em">{{ drink_type[0] }}</td>
+                        <td style="padding: 0.5em 1em">{{ drink_type[1] }}</td>
+                        <td style="padding: 0.5em 1em">{{ drink_type[2] }}</td>
+                        <td style="padding: 0.5em 1em">{{ drink_type[3] }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Keine Getränkesorten vorhanden.</p>
+        {% endif %}
+        <p>Füge Getränkesorte hinzu:</p>
+        <form method="post" action="/add_drink_type" style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em; background: var(--hellgrau); padding: 1em; border-radius: 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05); max-width: 600px;">
+            <label for="drink_type_name" style="margin: 0 0.5em 0 0; font-weight: bold">Name:</label>
+            <input id="drink_type_name" type="text" name="drink_type_name" placeholder="Drink Type Name" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100%;" />
+            <label for="drink_type_icon" style="margin: 0 0.5em 0 0; font-weight: bold">Icon:</label>
+            <input id="drink_type_icon" type="text" name="drink_type_icon" placeholder="Drink Type Icon" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100%;" />
+            <button type="submit" style="padding: 0.5em 1em; background: rgb(0, 97, 143); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Add Drink Type</button>
+        </form>
+        <p>Setze Menge der Getränkesorte:</p>
+        <form method="post" action="/set_drink_type_quantity" style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em; background: var(--hellgrau); padding: 1em; border-radius: 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05); max-width: 600px;">
+            <label for="drink_type_select" style="margin: 0 0.5em 0 0; font-weight: bold">Getränkesorte:</label>
+            <select id="drink_type_select" name="drink_type_name" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
+                {% for drink_type in drink_types %}
+                    <option value="{{ drink_type[1] }}">{{ drink_type[1] }}</option>
+                {% endfor %}
+            </select>
+            <label for="drink_type_quantity" style="margin: 0 0.5em 0 0; font-weight: bold">Menge:</label>
+            <input id="drink_type_quantity" type="number" name="quantity" min="0" step="1" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100px;" />
+            <button type="submit" style="padding: 0.5em 1em; background: rgb(0, 97, 143); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Setzen</button>
+        </form>
+        
     {% endif %}
 {% endif %}
 

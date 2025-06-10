@@ -47,6 +47,7 @@ def home(request: Request):
     # if user is Admin, load all postpaid users
     users = None
     db_users_prepaid = None
+    drink_types = []
     if ADMIN_GROUP in user_authentik["groups"]:
         with engine.connect() as conn:
             t = text("SELECT id FROM users_postpaid")
@@ -57,6 +58,9 @@ def home(request: Request):
                     user_db = db.models.get_postpaid_user(row[0])
                     if user_db:
                         users.append(user_db)
+
+            t2 = text("SELECT id, drink_name, icon, quantity FROM drink_types")
+            drink_types = conn.execute(t2).fetchall()
 
     # if user is in Fachschaft, load all prepaid users
     prepaid_users_from_curr_user = []
@@ -91,7 +95,7 @@ def home(request: Request):
     last_drink = db.models.get_last_drink(user_db_id, user_is_postpaid, 60)
 
     most_used_drinks = db.models.get_most_used_drinks(user_db_id, user_is_postpaid, 3)
-    most_used_drinks.append({"drink_type": "Sonstiges", "count": 0})  # ensure "Sonstiges" is in
+    most_used_drinks.append({"drink_type_id": 1, "drink_type": "Sonstiges", "count": 0, "icon": "sonstiges.png"})  # ensure "Sonstiges" is in
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -103,6 +107,7 @@ def home(request: Request):
         "prepaid_users_from_curr_user": prepaid_users_from_curr_user,
         "last_drink": last_drink,
         "avail_drink_types": most_used_drinks,
+        "drink_types": drink_types,
     })
 
 @app.get("/login", response_class=HTMLResponse)
@@ -465,7 +470,9 @@ def update_drink_post(request: Request, drink_type: str = Form(...)):
     if not drink_type:
         raise HTTPException(status_code=400, detail="Drink type is empty")
 
-    db.models.update_drink_type(user_db_id, get_is_postpaid(user_authentik), last_drink["id"], drink_type)
+    drink_type_id = db.models.get_drink_type_by_name(drink_type)["drink_type_id"]
+
+    db.models.update_drink_type(user_db_id, get_is_postpaid(user_authentik), last_drink["id"], drink_type_id)
 
     return RedirectResponse(url="/", status_code=303)
 
@@ -496,6 +503,50 @@ def stats(request: Request):
         "user_db_id": user_db_id,
         "stats_drink_types": drink_types,
     })
+    
+@app.post("/add_drink_type")
+def add_drink_type(request: Request, drink_type: str = Form(...), icon: str = Form(...)):
+    user_authentik = request.session.get("user_authentik")
+    if not user_authentik or ADMIN_GROUP not in user_authentik["groups"]:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    user_db_id = request.session.get("user_db_id")
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not drink_type:
+        raise HTTPException(status_code=400, detail="Drink type is empty")
+    if not icon:
+        raise HTTPException(status_code=400, detail="Icon is empty")
+    if len(drink_type) < 3 or len(drink_type) > 20:
+        raise HTTPException(status_code=400, detail="Drink type must be between 3 and 20 characters")
+    if len(icon) < 3 or len(icon) > 20:
+        raise HTTPException(status_code=400, detail="Icon must be between 3 and 20 characters")
+    if not icon.endswith(".png"):
+        raise HTTPException(status_code=400, detail="Icon must be a .png file")
+    if db.models.get_drink_type_by_name(drink_type):
+        raise HTTPException(status_code=400, detail="Drink type already exists")
+
+    db.models.add_drink_type(drink_type, icon)
+
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/set_drink_type_quantity")
+def drink_type_set_quantity(request: Request, drink_type_name: str = Form(...), quantity: int = Form(...)):
+    user_authentik = request.session.get("user_authentik")
+    if not user_authentik or ADMIN_GROUP not in user_authentik["groups"]:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    user_db_id = request.session.get("user_db_id")
+    if not user_db_id:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not drink_type_name or not quantity:
+        raise HTTPException(status_code=400, detail="Drink type name and quantity are required")
+    if quantity < 0 or quantity > 10000:
+        raise HTTPException(status_code=400, detail="Quantity must be between 0 and 10000")
+
+    drink_type_id = db.models.get_drink_type_by_name(drink_type_name)["drink_type_id"]
+
+    db.models.set_drink_type_quantity(drink_type_id, quantity)
+
+    return RedirectResponse(url="/", status_code=303)
 
 
 def get_is_postpaid(user_authentik: dict) -> bool:

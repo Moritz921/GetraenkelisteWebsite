@@ -7,7 +7,6 @@ transaction logging, drink recording, and utility functions for drink statistics
 
 Constants:
     DRINK_COST (int): Cost of a drink in cents.
-    AVAILABLE_DRINKS (list): List of available drink types.
 
 Functions:
     _log_transaction(user_id, user_is_postpaid, ...): Log a user's money transaction.
@@ -37,7 +36,7 @@ import os
 import secrets
 import datetime
 import random
-from sqlalchemy import create_engine, text, select
+from sqlalchemy import create_engine, text
 from fastapi import HTTPException
 
 from dotenv import load_dotenv
@@ -49,7 +48,6 @@ DATABASE_URL = "sqlite:///" + str(DATABASE_FILE)
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 DRINK_COST = 100  # cent
-AVAILABLE_DRINKS = ["Paulaner Spezi", "Mio Mate", "Club Mate", "Eistee Pfirsisch"]
 
 with engine.connect() as conn:
     # Create a table for postpaid users
@@ -85,9 +83,10 @@ with engine.connect() as conn:
                           postpaid_user_id INTEGER,
                           prepaid_user_id INTEGER,
                           timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          drink_type TEXT,
+                          drink_type INTEGER DEFAULT 1,
                           FOREIGN KEY (postpaid_user_id) REFERENCES users_postpaid(id),
-                          FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id)
+                          FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id),
+                          FOREIGN KEY (drink_type) REFERENCES drink_types(id)
                       )
                       """))
 
@@ -105,6 +104,27 @@ with engine.connect() as conn:
                           FOREIGN KEY (postpaid_user_id) REFERENCES users_postpaid(id),
                           FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id)
                       )
+                      """))
+    
+    # create a table for drink types
+    conn.execute(text("""
+                      CREATE TABLE IF NOT EXISTS drink_types (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            drink_name TEXT NOT NULL UNIQUE,
+                            icon TEXT NOT NULL,
+                            quantity INT DEFAULT 0
+                      )
+                      """))
+    conn.execute(text("""
+                      INSERT OR IGNORE INTO drink_types (id, drink_name, icon, quantity) VALUES
+                        (1, 'Sonstiges', 'sonstiges.png', 0),
+                        (2, 'Paulaner Spezi', 'paulaner_spezi.png', 0),
+                        (3, 'Paulaner Limo Orange', 'paulaner_limo_orange.png', 0),
+                        (4, 'Paulaner Limo Zitrone', 'paulaner_limo_zitrone.png', 0),
+                        (5, 'Mio Mate Original', 'mio_mate_original.png', 0),
+                        (6, 'Mio Mate Ginger', 'mio_mate_ginger.png', 0),
+                        (7, 'Mio Mate Pomegranate', 'mio_mate_pomegranate.png', 0),
+                        (8, 'Club Mate', 'club_mate.png', 0)
                       """))
     conn.commit()
 
@@ -293,7 +313,7 @@ def set_postpaid_user_money(user_id: int, money: float):
         connection.commit()
     return result.rowcount
 
-def drink_postpaid_user(user_id: int, drink_type: str = ""):
+def drink_postpaid_user(user_id: int, drink_type: int = 1):
     """
     Deducts 100 units from the specified postpaid user's balance and records a drink entry.
     Args:
@@ -635,7 +655,7 @@ def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int 
         result = connection.execute(t, {"user_id": user_id}).fetchone()
         if not result:
             return None
-        drink_id, timestamp, drink_type = result
+        drink_id, timestamp, drink_type_id = result
 
     if timestamp:
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -645,8 +665,13 @@ def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int 
             last_drink_time = last_drink_time.replace(tzinfo=datetime.timezone.utc)
         if (now - last_drink_time).total_seconds() > max_since_seconds:
             return None
-        drink_obj = {"id": drink_id, "timestamp": timestamp, "drink_type": drink_type}
+        drink_obj = {"id": drink_id, "timestamp": timestamp, "drink_type_id": drink_type_id}
+        if drink_type_id:
+            drink_type_name, drink_type_icon = get_drink_type(drink_type_id)
+            drink_obj["drink_type_name"] = drink_type_name
+            drink_obj["drink_type_icon"] = drink_type_icon
         return drink_obj
+    return None
 
 def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink_cost: int = DRINK_COST):
     """
@@ -696,7 +721,7 @@ def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink
             description="Reverted last drink"
         )
 
-def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type: str):
+def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type_id: int):
     """
     Updates the drink type for a specific drink associated with a user.
     Depending on whether the user is postpaid or prepaid, the function updates the `drink_type`
@@ -715,13 +740,51 @@ def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type
         t = text("UPDATE drinks SET drink_type = :drink_type WHERE postpaid_user_id = :user_id AND id = :drink_id")
     else:
         t = text("UPDATE drinks SET drink_type = :drink_type WHERE prepaid_user_id = :user_id AND id = :drink_id")
+    
+    t_update_quantity = text("UPDATE drink_types SET quantity = quantity - 1 WHERE id = :drink_type_id")
 
     with engine.connect() as connection:
-        result = connection.execute(t, {"user_id": user_id, "drink_id": drink_id, "drink_type": drink_type})
+        result = connection.execute(t, {"user_id": user_id, "drink_id": drink_id, "drink_type": drink_type_id})
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Drink not found")
+        
+        result_quantity = connection.execute(t_update_quantity, {"drink_type_id": drink_type_id})
+        if result_quantity.rowcount != 1:
+            raise HTTPException(status_code=404, detail="Drink type not found")
         connection.commit()
     return result.rowcount
+
+def get_drink_type(drink_id: int):
+    t = text("SELECT drink_name, icon FROM drink_types WHERE id = :drink_id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"drink_id": drink_id}).fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="Drink type not found")
+        return {"drink_name": result[0], "icon": result[1]}
+    
+def get_drink_type_by_name(drink_name: str):
+    t = text("SELECT id, icon FROM drink_types WHERE drink_name = :drink_name")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"drink_name": drink_name}).fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="Drink type not found")
+        return {"drink_type_id": result[0], "icon": result[1]}
+    
+def add_drink_type(drink_name: str, icon: str, quantity: int = 0):
+    t = text("INSERT INTO drink_types (drink_name, icon, quantity) VALUES (:drink_name, :icon, :quantity)")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"drink_name": drink_name, "icon": icon, "quantity": quantity})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=500, detail="Failed to add drink type")
+        connection.commit()
+
+def set_drink_type_quantity(drink_type_id: int, quantity: int):
+    t = text("UPDATE drink_types SET quantity = :quantity WHERE id = :drink_type_id")
+    with engine.connect() as connection:
+        result = connection.execute(t, {"drink_type_id": drink_type_id, "quantity": quantity})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Drink type not found")
+        connection.commit()
 
 def get_most_used_drinks(user_id: int, user_is_postpaid: bool, limit: int = 4):
     """
@@ -734,19 +797,34 @@ def get_most_used_drinks(user_id: int, user_is_postpaid: bool, limit: int = 4):
         list[dict]: Each dict has 'drink_type' and 'count'.
     """
     if user_is_postpaid:
-        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE postpaid_user_id = :user_id AND drink_type IS NOT NULL AND drink_type != 'Sonstiges' AND drink_type != 'None' GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
+        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE postpaid_user_id = :user_id AND drink_type != 1 GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
     else:
-        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE prepaid_user_id = :user_id AND drink_type IS NOT NULL AND drink_type != 'Sonstiges' AND drink_type != 'None' GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
+        t = text("SELECT drink_type, count(drink_type) as count FROM drinks WHERE prepaid_user_id = :user_id AND drink_type != 1 GROUP BY drink_type ORDER BY count DESC LIMIT :limit")
 
     with engine.connect() as connection:
         result = connection.execute(t, {"user_id": user_id, "limit": limit}).fetchall()
-        drinks = [{"drink_type": row[0], "count": row[1]} for row in result]
+        drinks = [{"drink_type_id": row[0], "count": row[1]} for row in result]
+
+        available_drink_ids_text = text("SELECT id FROM drink_types")
+        available_drinks = connection.execute(available_drink_ids_text).fetchall()
+        available_drink_ids = [row[0] for row in available_drinks]
+        if 1 in available_drink_ids:
+            available_drink_ids.remove(1)
 
     while len(drinks) < limit:
-        random_drink = random.choice(AVAILABLE_DRINKS)
-        if any(drink["drink_type"] == random_drink for drink in drinks):
+        if not available_drink_ids:
+            print("No more available drink types to fill up the drinks list")
+            break
+        random_drink = random.choice(available_drink_ids)
+        if any(drink["drink_type_id"] == random_drink for drink in drinks):
+            available_drink_ids.remove(random_drink)
             continue
-        drinks.append({"drink_type": random_drink, "count": 0})
+        drinks.append({"drink_type_id": random_drink, "count": 0})
+
+    for drink in drinks:
+        drink_type_info = get_drink_type(drink["drink_type_id"])
+        drink["drink_type"] = drink_type_info["drink_name"]
+        drink["icon"] = drink_type_info["icon"]
 
     return drinks
 
@@ -765,6 +843,11 @@ def get_stats_drink_types():
         result = connection.execute(t).fetchall()
         if not result:
             return []
-        drinks = [{"drink_type": row[0], "count": row[1]} for row in result]
+        drinks = [{"drink_type_id": row[0], "count": row[1]} for row in result]
+
+    for drink in drinks:
+        drink_type_info = get_drink_type(drink["drink_type_id"])
+        drink["drink_type"] = drink_type_info["drink_name"]
+        drink["icon"] = drink_type_info["icon"]
 
     return drinks
