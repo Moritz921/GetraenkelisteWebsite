@@ -105,7 +105,7 @@ with engine.connect() as conn:
                           FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id)
                       )
                       """))
-    
+
     # create a table for drink types
     conn.execute(text("""
                       CREATE TABLE IF NOT EXISTS drink_types (
@@ -221,7 +221,6 @@ def create_postpaid_user(username: str):
         int: The ID of the newly created user.
     """
 
-    print(f"create_postpaid_user: {username}")
     t_insert = text("INSERT INTO users_postpaid (username) VALUES (:username)")
     with engine.connect() as connection:
         t_select = text("SELECT * FROM users_postpaid WHERE username = :username")
@@ -344,15 +343,15 @@ def drink_postpaid_user(user_id: int, drink_type: int = 1):
         connection.commit()
 
     t_without_drink_type = text("INSERT INTO drinks (postpaid_user_id, timestamp) VALUES (:postpaid_user_id, CURRENT_TIMESTAMP)")
-    t_with_drink_type = text("INSERT INTO drinks (postpaid_user_id, timestamp, drink_type) VALUES (:postpaid_user_id, CURRENT_TIMESTAMP, :drink_type)")
+    t_update_drink_types = text("UPDATE drink_types SET quantity = quantity - 1 WHERE id = 1")
 
     with engine.connect() as connection:
-        if not drink_type:
-            result = connection.execute(t_without_drink_type, {"postpaid_user_id": user_id})
-        else:
-            result = connection.execute(t_with_drink_type, {"postpaid_user_id": user_id, "drink_type": drink_type})
+        result = connection.execute(t_without_drink_type, {"postpaid_user_id": user_id})
         if result.rowcount == 0:
             raise HTTPException(status_code=500, detail="Failed to create drink entry")
+        result2 = connection.execute(t_update_drink_types)
+        if result2.rowcount == 0:
+            raise HTTPException(status_code=500, detail="Failed to update drink type quantity")
         connection.commit()
     return result.rowcount
 
@@ -696,8 +695,16 @@ def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink
         del_t = text("DELETE FROM drinks WHERE prepaid_user_id = :user_id AND id = :drink_id")
         update_t = text("UPDATE users_prepaid SET money = money + :drink_cost WHERE id = :user_id")
         money_t = text("SELECT money FROM users_prepaid WHERE id = :user_id")
+    drink_id_t = text("SELECT drink_type FROM drinks WHERE id = :drink_id")
+    drink_reduce_t = text("UPDATE drink_types SET quantity = quantity + 1 WHERE id = :drink_type_id")
 
     with engine.connect() as connection:
+        # get the drink type ID from the drink ID
+        id_res = connection.execute(drink_id_t, {"drink_id": drink_id}).fetchone()
+        if not id_res:
+            raise HTTPException(status_code=404, detail="Drink type not found")
+        drink_type_id = id_res[0]
+
         # Check if the drink exists
         drink_exists = connection.execute(del_t, {"user_id": user_id, "drink_id": drink_id}).rowcount > 0
         if not drink_exists:
@@ -709,7 +716,15 @@ def revert_last_drink(user_id: int, user_is_postpaid: bool, drink_id: int, drink
             raise HTTPException(status_code=404, detail="User not found")
 
         new_money = prev_money[0] + drink_cost
-        connection.execute(update_t, {"user_id": user_id, "drink_cost": drink_cost})
+        update_res = connection.execute(update_t, {"user_id": user_id, "drink_cost": drink_cost})
+        if update_res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # reduce the drink type quantity
+        reduce_res = connection.execute(drink_reduce_t, {"drink_type_id": drink_type_id})
+        if reduce_res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Drink type not found")
+
         connection.commit()
 
         _log_transaction(
@@ -740,17 +755,27 @@ def update_drink_type(user_id: int, user_is_postpaid: bool, drink_id, drink_type
         t = text("UPDATE drinks SET drink_type = :drink_type WHERE postpaid_user_id = :user_id AND id = :drink_id")
     else:
         t = text("UPDATE drinks SET drink_type = :drink_type WHERE prepaid_user_id = :user_id AND id = :drink_id")
-    
-    t_update_quantity = text("UPDATE drink_types SET quantity = quantity - 1 WHERE id = :drink_type_id")
+
+    t_update_quantity_old = text("UPDATE drink_types SET quantity = quantity + 1 WHERE id = :drink_type_id")
+    t_get_old_drink_type = text("SELECT drink_type FROM drinks WHERE id = :drink_id")
+    t_update_quantity_new = text("UPDATE drink_types SET quantity = quantity - 1 WHERE id = :drink_type_id")
 
     with engine.connect() as connection:
+        result_old_drink_type = connection.execute(t_get_old_drink_type, {"drink_id": drink_id}).fetchone()
+        if not result_old_drink_type:
+            raise HTTPException(status_code=404, detail="Old drink type not found")
+        old_drink_type_id = result_old_drink_type[0]
+
         result = connection.execute(t, {"user_id": user_id, "drink_id": drink_id, "drink_type": drink_type_id})
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Drink not found")
-        
-        result_quantity = connection.execute(t_update_quantity, {"drink_type_id": drink_type_id})
+
+        result_quantity = connection.execute(t_update_quantity_new, {"drink_type_id": drink_type_id})
         if result_quantity.rowcount != 1:
             raise HTTPException(status_code=404, detail="Drink type not found")
+        result_quantity_old = connection.execute(t_update_quantity_old, {"drink_type_id": old_drink_type_id})
+        if result_quantity_old.rowcount != 1:
+            raise HTTPException(status_code=404, detail="Old drink type not found")
         connection.commit()
     return result.rowcount
 
