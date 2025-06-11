@@ -503,29 +503,29 @@ def stats(request: Request):
         "user_db_id": user_db_id,
         "stats_drink_types": drink_types,
     })
-    
+
 @app.post("/add_drink_type")
-def add_drink_type(request: Request, drink_type: str = Form(...), icon: str = Form(...)):
+def add_drink_type(request: Request, drink_type_name: str = Form(...), drink_type_icon: str = Form(...)):
     user_authentik = request.session.get("user_authentik")
     if not user_authentik or ADMIN_GROUP not in user_authentik["groups"]:
         raise HTTPException(status_code=403, detail="Not allowed")
     user_db_id = request.session.get("user_db_id")
     if not user_db_id:
         raise HTTPException(status_code=404, detail="User not found")
-    if not drink_type:
-        raise HTTPException(status_code=400, detail="Drink type is empty")
-    if not icon:
-        raise HTTPException(status_code=400, detail="Icon is empty")
-    if len(drink_type) < 3 or len(drink_type) > 20:
-        raise HTTPException(status_code=400, detail="Drink type must be between 3 and 20 characters")
-    if len(icon) < 3 or len(icon) > 20:
-        raise HTTPException(status_code=400, detail="Icon must be between 3 and 20 characters")
-    if not icon.endswith(".png"):
-        raise HTTPException(status_code=400, detail="Icon must be a .png file")
-    if db.models.get_drink_type_by_name(drink_type):
-        raise HTTPException(status_code=400, detail="Drink type already exists")
 
-    db.models.add_drink_type(drink_type, icon)
+    if not drink_type_name:
+        raise HTTPException(status_code=400, detail="Drink type is empty")
+    if not drink_type_icon:
+        raise HTTPException(status_code=400, detail="Icon is empty")
+    if len(drink_type_name) < 3 or len(drink_type_name) > 20:
+        raise HTTPException(status_code=400, detail="Drink type must be between 3 and 20 characters")
+    if len(drink_type_icon) < 5 or len(drink_type_icon) > 20:
+        raise HTTPException(status_code=400, detail="Icon must be between 3 and 20 characters")
+    if not drink_type_icon.endswith(".png"):
+        raise HTTPException(status_code=400, detail="Icon must be a .png file")
+
+    print(f"Adding drink type: {drink_type_name} with icon: {drink_type_icon}")
+    db.models.add_drink_type(drink_type_name, drink_type_icon)
 
     return RedirectResponse(url="/", status_code=303)
 

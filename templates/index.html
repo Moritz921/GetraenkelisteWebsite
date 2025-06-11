@@ -95,7 +95,7 @@ content %}
     <div style="margin: 1em 0; text-align: center;">
         <strong>Letztes Getränk:</strong>
         <div style="margin: 0.5em 0;">
-            Typ: {{ last_drink.drink_type }}<br>
+            Typ: {{ last_drink.drink_type_name }}<br>
             Zeit: <span class="local-timestamp" data-utc="{{ last_drink.timestamp }}">{{ last_drink.timestamp }}</span><br>
             <script>
                 document.addEventListener("DOMContentLoaded", function() {
