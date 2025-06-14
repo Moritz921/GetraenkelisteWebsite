@@ -1,5 +1,7 @@
 # Website für die Getränkeliste
 
+## This repo is only a mirror of the original hosted on [git.fs.cs.uni-frankfurt.de](https://git.fs.cs.uni-frankfurt.de/Fachschaft/GetraenkelisteWebsite)
+
 Dieses Repository beinhaltet den Quellcode für die Website der Getränkeliste.
 
 Nach Problemen mit der Prepaid-Liste wird hier ein neuer Versuch gestartet, diese Liste ins digitale umzuwandeln.
