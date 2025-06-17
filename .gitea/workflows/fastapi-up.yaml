@@ -1,0 +1,52 @@
+name: Test FastAPI Startup
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+jobs:
+    fastapi-up:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt
+                  pip install uvicorn
+
+            - name: Check FastAPI startup and protected endpoints
+              run: |
+                  uvicorn main:app --host 127.0.0.1 --port 8000 &
+                  sleep 5
+                  curl --fail http://127.0.0.1:8000/ || (echo 'FastAPI did not start!' && exit 1)
+                  # Test: /stats should not be available without login
+                  status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/stats)
+                  if [ "$status" = "303" ] || [ "$status" = "401" ] || [ "$status" = "403" ]; then
+                    echo "Access to /stats correctly denied for unauthenticated user."
+                  else
+                    echo "Access to /stats should be denied, got status $status"
+                    exit 1
+                  fi
+                  # Test: POST /drink should not be available without login
+                  status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8000/drink)
+                  if [ "$status" = "303" ] || [ "$status" = "401" ] || [ "$status" = "403" ]; then
+                    echo "POST to /drink correctly denied for unauthenticated user."
+                  else
+                    echo "POST to /drink should be denied, got status $status"
+                    exit 1
+                  fi
+              env:
+                  SECRET_KEY: test_secret
+                  DATABASE_FILE: test.db
