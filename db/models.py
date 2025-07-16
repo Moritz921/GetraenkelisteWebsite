@@ -632,7 +632,47 @@ def del_user_prepaid(user_id: int):
         connection.commit()
     return result.rowcount
 
-def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int = 60):
+def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int = 3*30*24*60*60):
+    """
+    Retrieve the most recent drink entry for a user within a specified time window.
+
+    Args:
+        user_id (int): The ID of the user whose last drink is to be retrieved.
+        user_is_postpaid (bool): True if the user is postpaid, False if prepaid.
+        max_since_seconds (int, optional): Max seconds since last drink. Defaults to 3 months.
+
+    Returns:
+        dict or None: Dict with 'id', 'timestamp', 'drink_type' if found within time window,
+        else None.
+    """
+    if user_is_postpaid:
+        t = text("SELECT id, timestamp, drink_type FROM drinks WHERE postpaid_user_id = :user_id ORDER BY timestamp DESC LIMIT 1")
+    else:
+        t = text("SELECT id, timestamp, drink_type FROM drinks WHERE prepaid_user_id = :user_id ORDER BY timestamp DESC LIMIT 1")
+
+    with engine.connect() as connection:
+        result = connection.execute(t, {"user_id": user_id}).fetchone()
+        if not result:
+            return None
+        drink_id, timestamp, drink_type_id = result
+
+    if timestamp:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        last_drink_time = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        # Ensure both are offset-aware
+        if last_drink_time.tzinfo is None:
+            last_drink_time = last_drink_time.replace(tzinfo=datetime.timezone.utc)
+        if (now - last_drink_time).total_seconds() > max_since_seconds:
+            return None
+        drink_obj = {"id": drink_id, "timestamp": timestamp, "drink_type_id": drink_type_id}
+        if drink_type_id:
+            drink_type_dict = get_drink_type(drink_type_id)
+            drink_obj["drink_type_name"] = drink_type_dict["drink_name"]
+            drink_obj["drink_type_icon"] = drink_type_dict["icon"]
+        return drink_obj
+    return None
+
+def get_last_recent_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int = 60):
     """
     Retrieve the most recent drink entry for a user within a specified time window.
 
@@ -666,9 +706,9 @@ def get_last_drink(user_id: int, user_is_postpaid: bool, max_since_seconds: int 
             return None
         drink_obj = {"id": drink_id, "timestamp": timestamp, "drink_type_id": drink_type_id}
         if drink_type_id:
-            drink_type_name, drink_type_icon = get_drink_type(drink_type_id)
-            drink_obj["drink_type_name"] = drink_type_name
-            drink_obj["drink_type_icon"] = drink_type_icon
+            drink_type_dict = get_drink_type(drink_type_id)
+            drink_obj["drink_type_name"] = drink_type_dict["drink_name"]
+            drink_obj["drink_type_icon"] = drink_type_dict["icon"]
         return drink_obj
     return None
 

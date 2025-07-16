@@ -92,9 +92,12 @@ def home(request: Request):
         db_user = db.models.get_prepaid_user(user_db_id)
 
     # get last drink for current user, if not less than 60 seconds ago
-    last_drink = db.models.get_last_drink(user_db_id, user_is_postpaid, 60)
+    last_recent_drink = db.models.get_last_recent_drink(user_db_id, user_is_postpaid, 60)
 
-    most_used_drinks = db.models.get_most_used_drinks(user_db_id, user_is_postpaid, 3)
+    # get last drink for current user, if not less than 3 months ago
+    last_regular_drink = db.models.get_last_drink(user_db_id, user_is_postpaid)
+
+    most_used_drinks = db.models.get_most_used_drinks(user_db_id, user_is_postpaid, 99)
     most_used_drinks.append({"drink_type_id": 1, "drink_type": "Sonstiges", "count": 0, "icon": "sonstiges.png"})  # ensure "Sonstiges" is in
 
     return templates.TemplateResponse("index.html", {
@@ -105,7 +108,8 @@ def home(request: Request):
         "db_user": db_user, 
         "db_users_prepaid": db_users_prepaid,
         "prepaid_users_from_curr_user": prepaid_users_from_curr_user,
-        "last_drink": last_drink,
+        "last_recent_drink": last_recent_drink,
+        "last_regular_drink": last_regular_drink,
         "avail_drink_types": most_used_drinks,
         "drink_types": drink_types,
     })
