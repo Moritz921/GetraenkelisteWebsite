@@ -66,7 +66,6 @@ content %}
                     });
                 });
             </script>
-            ID: {{ last_recent_drink.id }}
         </div>
         <form method="post" action="/del_last_drink" style="display: inline;">
             <input type="hidden" name="drink_id" value="{{ last_recent_drink.drink_id }}">
@@ -352,6 +351,7 @@ content %}
                     {% endfor %}
                 </select>
                 <button type="submit" style="padding: 0.5em 1em; background: rgb(179, 6, 44); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Delete User</button>
+            </form>
         {% else %}
             <tr>
                 <td colspan="7" style="text-align: center">No users in prepaid database</td>
