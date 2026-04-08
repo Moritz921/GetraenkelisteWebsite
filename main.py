@@ -500,12 +500,14 @@ def stats(request: Request):
         raise HTTPException(status_code=404, detail="User not found")
 
     drink_types = db.models.get_stats_drink_types()
+    hourly_stats = db.models.get_stats_drink_hourly()
 
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "user": user_authentik,
         "user_db_id": user_db_id,
         "stats_drink_types": drink_types,
+        "stats_drink_hourly": hourly_stats,
     })
 
 @app.post("/add_drink_type")

@@ -916,3 +916,29 @@ def get_stats_drink_types():
         drink["icon"] = drink_type_info["icon"]
 
     return drinks
+
+def get_stats_drink_hourly():
+    """
+    Retrieve hourly drink statistics from the database.
+    Executes a SQL query to count the number of drinks grouped by hour of the day
+    (00-23). Returns a list of dictionaries containing the hour and count for each
+    hour. Hours without any drinks are included with a count of 0.
+    Returns:
+        list[dict]: A list of dictionaries with keys 'hour' (string, e.g., "00", "01", ..., "23")
+                    and 'count' (int). The list is sorted by hour in ascending order.
+                    Returns an empty list if no drinks exist in the database.
+    """
+
+    t = text("SELECT strftime('%H', timestamp), count(*) FROM drinks GROUP BY strftime('%H', timestamp);")
+    with engine.connect() as connection:
+        result = connection.execute(t).fetchall()
+        if not result:
+            return []
+        hourly_stats = [{"hour": row[0], "count": row[1]} for row in result]
+    # sort by hour and add hours without drinks with count 0
+    for hour in range(24):
+        if not any(stat["hour"] == f"{hour:02d}" for stat in hourly_stats):
+            hourly_stats.append({"hour": f"{hour:02d}", "count": 0})
+    hourly_stats.sort(key=lambda x: x["hour"])
+
+    return hourly_stats

@@ -7,12 +7,18 @@
 
 <h3>Verteilung der Getränkesorten</h3>
 <canvas id="pieChart" width="400" height="200"></canvas>
+<canvas id="hourChart" width="400" height="200"></canvas>
 
 <script>
 // Pie Chart für Getränketypen
 const pieChartLabels = {{ stats_drink_types | map(attribute='drink_type') | list | tojson }};
 const pieChartData = {{ stats_drink_types | map(attribute='count') | list | tojson }};
 const pieCtx = document.getElementById('pieChart').getContext('2d');
+
+const hourChartLabels = {{ stats_drink_hourly | map(attribute='hour') | list | tojson }};
+const hourChartData = {{ stats_drink_hourly | map(attribute='count') | list | tojson }};
+const hourCtx = document.getElementById('hourChart').getContext('2d');
+
 new Chart(pieCtx, {
     type: 'doughnut',
     data: {
@@ -28,6 +34,30 @@ new Chart(pieCtx, {
             title: {
                 display: true,
                 text: 'Verteilung der Getränkesorten'
+            }
+        }
+    }
+});
+
+new Chart(hourCtx, {
+    type: 'bar',
+    data: {
+        labels: hourChartLabels,
+        datasets: [{
+            label: 'Getränke pro Stunde',
+            data: hourChartData,
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'top' },
+            title: {
+                display: true,
+                text: 'Getränkeverbrauch pro Stunde'
             }
         }
     }
