@@ -242,7 +242,81 @@ content %}
             <p>Es sind keine Prepaid-User vorhanden.</p>
         {% endif %}
     {% endif %}
-    {% if 'Getraenkeliste Verantwortliche' in user.groups %}
+
+
+{% if drink_history %}
+    <style>
+        .hidden {
+            display: none
+        }
+    </style>
+    <h3>Historie</h3>
+    <table>
+        <thead>
+            <tr>
+                <th style="padding: 0.5em 1em">Datum / Uhrzeit</th>
+                <th style="padding: 0.5em 1em">Veränderung</th>
+                <th style="padding: 0.5em 1em">Neuer Kontostand</th>
+                <th style="padding: 0.5em 1em">Transaktionsart</th>
+                <th style="padding: 0.5em 1em">Icon</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for drink in drink_history %}
+                {% if loop.index <= 10 %}
+                    <tr>
+                {% else %}
+                    <tr class="long-history-hidden hidden">
+                {% endif %}
+                    <td style="padding: 0.5em 1em">{{ drink.timestamp }} UTC</td>
+                    <td style="padding: 0.5em 1em">
+                        {% if drink.delta_money > 0 %}
+                            +{{ drink.delta_money / 100}} €
+                        {% else %}
+                            {{ drink.delta_money / 100}} €
+                        {% endif %}
+                    </td>
+                    <td style="padding: 0.5em 1em">{{ drink.new_money / 100}} €</td>
+                    <td style="padding: 0.5em 1em">
+                        {% if drink.description == "Drink button pressed" %}
+                            Strich hinzugefügt
+                        {% elif drink.description == "Reverted last drink" %}
+                            Strich rückgängig gemacht
+                        {% elif drink.description == "Set money manually via Admin UI" %}
+                            Änderung durch Admin
+                        {% else %}
+                            {{ drink.description }}
+                        {% endif %}
+                    </td>
+                    <td style="padding: 0.5em 1em">
+                        {% if drink.icon %}
+                            <img src="/static/drinks/{{ drink.icon }}" alt="{{ drink.icon }}" style="width:48px; height:48px; object-fit:contain;">
+                        {% elif drink.description == "Drink button pressed" %}
+                            :(
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="long-history-hidden hidden">Es werden maximal 100 Ergebnisse angezeigt.</div>
+    <button id="history-expand" class="long-history-hidden-inv">Mehr anzeigen</button>
+    <button id="history-collapse" class="long-history-hidden hidden" type="button">Weniger anzeigen</button>
+    <script>
+        const hidden = () => document.querySelectorAll('.long-history-hidden');
+        const hidden_inv = () => document.querySelectorAll('.long-history-hidden-inv');
+        document.getElementById('history-expand').addEventListener('click', () => {
+            hidden().forEach(el => el.classList.remove('hidden'));
+            hidden_inv().forEach(el => el.classList.add('hidden'));
+        });
+        document.getElementById('history-collapse').addEventListener('click', () => {
+            hidden().forEach(el => el.classList.add('hidden'));
+            hidden_inv().forEach(el => el.classList.remove('hidden'));
+        });
+    </script>
+{% endif %}
+
+{% if 'Getraenkeliste Verantwortliche' in user.groups %}
         <h2>Admin Interface</h2>
         <p>Ausgleichszahlung:</p>
         <p>Der eingegebene Betrag wird vom aktuell eingeloggten Nutzer abgezogen und dem eingetragenem Nutzer gutgeschrieben.</p>
@@ -403,7 +477,6 @@ content %}
             <input id="drink_type_quantity" type="number" name="quantity" min="0" step="1" required style="padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100px;" />
             <button type="submit" style="padding: 0.5em 1em; background: rgb(0, 97, 143); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Setzen</button>
         </form>
-        
     {% endif %}
 {% endif %}
 

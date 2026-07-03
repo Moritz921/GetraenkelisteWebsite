@@ -99,6 +99,10 @@ def home(request: Request):
 
     most_used_drinks = db.models.get_most_used_drinks(user_db_id, user_is_postpaid, 99)
     most_used_drinks.append({"drink_type_id": 1, "drink_type": "Sonstiges", "count": 0, "icon": "sonstiges.png"})  # ensure "Sonstiges" is in
+    
+    drink_history = []
+    if user_is_postpaid:
+        drink_history = db.models.get_drink_history(user_db_id, 100)
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -112,6 +116,7 @@ def home(request: Request):
         "last_regular_drink": last_regular_drink,
         "avail_drink_types": most_used_drinks,
         "drink_types": drink_types,
+        "drink_history": drink_history,
     })
 
 @app.get("/login", response_class=HTMLResponse)

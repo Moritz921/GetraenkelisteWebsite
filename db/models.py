@@ -77,18 +77,36 @@ with engine.connect() as conn:
                       """))
 
     # create a table for every push on the drink button
+    #conn.execute(text("""ALTER TABLE drinks ADD transaction_id INTEGER"""))
+    #conn.execute(text("""DROP TABLE drinks_temp"""))
+    #conn.execute(text("""
+    #                  CREATE TABLE IF NOT EXISTS drinks_temp (
+    #                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+    #                      postpaid_user_id INTEGER,
+    #                      prepaid_user_id INTEGER,
+    #                      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    #                      drink_type INTEGER DEFAULT 1,
+    #                      transaction_id INTEGER
+    #                      )
+    #                      """))
+    #conn.execute(text("""INSERT INTO drinks_temp SELECT * FROM drinks"""))
+    #conn.execute(text("""DROP TABLE drinks"""))
     conn.execute(text("""
                       CREATE TABLE IF NOT EXISTS drinks (
-                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          postpaid_user_id INTEGER,
-                          prepaid_user_id INTEGER,
-                          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          drink_type INTEGER DEFAULT 1,
-                          FOREIGN KEY (postpaid_user_id) REFERENCES users_postpaid(id),
-                          FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id),
-                          FOREIGN KEY (drink_type) REFERENCES drink_types(id)
+                                                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                            postpaid_user_id INTEGER,
+                                                            prepaid_user_id INTEGER,
+                                                            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                                            drink_type INTEGER DEFAULT 1,
+                                                            transaction_id INTEGER,
+                                                            FOREIGN KEY (postpaid_user_id) REFERENCES users_postpaid(id),
+                                                            FOREIGN KEY (prepaid_user_id) REFERENCES users_prepaid(id),
+                                                            FOREIGN KEY (drink_type) REFERENCES drink_types(id),
+                                                            FOREIGN KEY (transaction_id) REFERENCES transactions(id)
                       )
                       """))
+    #conn.execute(text("""INSERT INTO drinks SELECT * FROM drinks_temp"""))
+    #conn.execute(text("""DROP TABLE drinks_temp"""))
 
     # create a table for every money transaction
     conn.execute(text("""
@@ -136,7 +154,8 @@ def _log_transaction(
         previous_money_cent = None,
         new_money_cent = None,
         delta_money_cent = None,
-        description = None
+        description = None,
+        transaction_type = None
     ):
     """
     Logs a transaction for a user, recording changes in their account balance.
@@ -328,7 +347,7 @@ def drink_postpaid_user(user_id: int, drink_type: int = 1):
         raise HTTPException(status_code=403, detail="User not activated")
 
     prev_money = get_postpaid_user(user_id)["money"]
-    _log_transaction(
+    transaction_id = _log_transaction(
         user_id=user_id,
         user_is_postpaid=True,
         previous_money_cent=prev_money,
@@ -342,11 +361,11 @@ def drink_postpaid_user(user_id: int, drink_type: int = 1):
             raise HTTPException(status_code=404, detail="User not found")
         connection.commit()
 
-    t_without_drink_type = text("INSERT INTO drinks (postpaid_user_id, timestamp) VALUES (:postpaid_user_id, CURRENT_TIMESTAMP)")
+    t_without_drink_type = text("INSERT INTO drinks (postpaid_user_id, timestamp, transaction_id) VALUES (:postpaid_user_id, CURRENT_TIMESTAMP, :transaction_id)")
     t_update_drink_types = text("UPDATE drink_types SET quantity = quantity - 1 WHERE id = 1")
 
     with engine.connect() as connection:
-        result = connection.execute(t_without_drink_type, {"postpaid_user_id": user_id})
+        result = connection.execute(t_without_drink_type, {"postpaid_user_id": user_id, "transaction_id": transaction_id})
         if result.rowcount == 0:
             raise HTTPException(status_code=500, detail="Failed to create drink entry")
         result2 = connection.execute(t_update_drink_types)
@@ -942,3 +961,19 @@ def get_stats_drink_hourly():
     hourly_stats.sort(key=lambda x: x["hour"])
 
     return hourly_stats
+
+def get_drink_history(user_id: int, limit: int = 10):
+    """
+    Retrieve the drink history for the current user, sorted by timestamp in descending order. Limited to the specified number of entries. Only usable for postpaid users as the current user.
+    Args:
+        user_id (int): id of postpaid user
+        limit (int): max number of entries for history. Default: 10
+    Returns:
+        list[dict]: A list containing the transaction_id, timestamp, money after the transaction, difference to the
+                    last entry, description of the transaction and a path to an icon containing the image of the drink,
+                    if this transaction was a drink.
+    """
+    t2 = text("SELECT t.id, t.timestamp, t.new_money, t.delta_money, t.description, i.icon FROM transactions as t LEFT JOIN drinks ON t.id = drinks.transaction_id LEFT JOIN drink_types as i ON i.id = drinks.drink_type WHERE t.postpaid_user_id = :user_id ORDER BY t.timestamp DESC LIMIT :limit")
+    with engine.connect() as connection:
+        result = connection.execute(t2, {"user_id": user_id, "limit": limit}).fetchall()
+    return result
